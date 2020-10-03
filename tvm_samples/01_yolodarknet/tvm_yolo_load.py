@@ -9,6 +9,7 @@ from tvm import relay
 from tvm.contrib.download import download_testdata
 from tvm.relay.testing.darknet import __darknetffi__
 from tvm.contrib import graph_runtime
+from PIL import Image
 import tvm.relay.testing.yolo_detection
 import tvm.relay.testing.darknet
 ## Download Pretrained YoloV3 model params
@@ -32,7 +33,7 @@ font_path = download_testdata(FONT_URL, FONT_NAME, module="data")
 ## Download test image
 IMAGE_NAME = "dog.jpg"
 IMAGE_URL = REPO_URL + "data/" + IMAGE_NAME + "?raw=true"
-img_path = download_testdata(IMAGE_URL, IMAGE_NAME, module="darknet")
+# img_path = download_testdata(IMAGE_URL, IMAGE_NAME, module="darknet")
 ## Download and Load darknet library
 if sys.platform in ["linux", "linux2"]:
     DARKNET_LIB = "libdarknet2.0.so"
@@ -66,7 +67,10 @@ LIB_PATH = "deploy_lir.tar"
 lib = tvm.runtime.load_module(LIB_PATH)
 
 [neth, netw] = shape["data"][2:]  # Current image shape is 608x608
-data = relay.testing.darknet.load_image(img_path, netw, neth)
+# data = relay.testing.darknet.load_image(img_path, netw, neth)
+img_path = './images/road.jpg'
+image = Image.open(img_path).resize((net.h, net.w))
+data = np.array(image)
 
 ## Execution on TVM Runtime
 module = graph_runtime.GraphModule(lib["default"](ctx))

@@ -1,2 +1,4 @@
 /tvm_samples/01_yolodarknet/deploy_lir.tar
 /tvm_samples/01_yolodarknet/deploy_lir.tar.so
+/tvm_samples/02_tvm_tf_yolo/model/yolov3_visdrone.pb
+

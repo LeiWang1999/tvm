@@ -24,7 +24,7 @@ x = np.array(img_y)[np.newaxis, np.newaxis,:,:]
 
 # Compile the model with relay
 target = 'llvm'
-input_name = '1'
+input_name = '123'
 shape_dict = {input_name: x.shape}
 mod, params = relay.frontend.from_onnx(onnx_model, shape_dict)
 
