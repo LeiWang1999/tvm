@@ -159,6 +159,8 @@ bool RuntimeEnabled(const String& target_str) {
     f_name = "device_api.hexagon";
   } else if (target.length() >= 5 && target.substr(0, 5) == "nvptx") {
     f_name = "device_api.cuda";
+  } else if (target.length() >= 3 && target.substr(0, 3) == "hip") {
+    f_name = "device_api.rocm";
   } else if (target.length() >= 4 && target.substr(0, 4) == "rocm") {
     f_name = "device_api.rocm";
   } else if (target.length() >= 4 && target.substr(0, 4) == "llvm") {

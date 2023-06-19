@@ -153,9 +153,10 @@ void CheckOrSetAttr(Map<String, ObjectRef>* attrs, const String& name, const Str
   if (iter == attrs->end()) {
     attrs->Set(name, value);
   } else {
-    auto str = (*iter).second.as<String>();
-    ICHECK(str && str.value() == value) << "ValueError: Expects \"" << name << "\" to be \""
-                                        << value << "\", but gets: " << (*iter).second;
+    const auto* str = (*iter).second.as<StringObj>();
+    ICHECK(str != nullptr && GetRef<String>(str) == value)
+        << "ValueError: Expects \"" << name << "\" to be \"" << value
+        << "\", but gets: " << (*iter).second;
   }
 }
 
@@ -178,8 +179,8 @@ TargetJSON UpdateCUDAAttrs(TargetJSON target) {
     // Use the compute version of the first CUDA GPU instead
     TVMRetValue version;
     if (!DetectDeviceFlag({kDLCUDA, 0}, runtime::kComputeVersion, &version)) {
-      LOG(WARNING) << "Unable to detect CUDA version, default to \"-arch=sm_50\" instead";
-      archInt = 50;
+      LOG(WARNING) << "Unable to detect CUDA version, default to \"-arch=sm_20\" instead";
+      archInt = 20;
     } else {
       archInt = std::stod(version.operator std::string()) * 10 + 0.1;
     }
@@ -206,12 +207,34 @@ TargetJSON UpdateNVPTXAttrs(TargetJSON target) {
     // Use the compute version of the first CUDA GPU instead
     TVMRetValue version;
     if (!DetectDeviceFlag({kDLCUDA, 0}, runtime::kComputeVersion, &version)) {
-      LOG(WARNING) << "Unable to detect CUDA version, default to \"-mcpu=sm_50\" instead";
-      arch = 50;
+      LOG(WARNING) << "Unable to detect CUDA version, default to \"-mcpu=sm_20\" instead";
+      arch = 20;
     } else {
       arch = std::stod(version.operator std::string()) * 10 + 0.1;
     }
     target.Set("mcpu", String("sm_") + std::to_string(arch));
+  }
+  return target;
+}
+
+/*!
+ * \brief Update the attributes in the HIP target.
+ * \param target The Target to update
+ * \return The updated attributes
+ */
+TargetJSON UpdateHIPAttrs(TargetJSON target) {
+  using tvm::runtime::Registry;
+  // Update -mcpu=gfx
+  std::string arch;
+  if (target.count("mcpu")) {
+    String mcpu = Downcast<String>(target.at("mcpu"));
+    arch = ExtractStringWithPrefix(mcpu, "gfx");
+    ICHECK(!arch.empty()) << "ValueError: HIP target gets an invalid GFX version: -mcpu=" << mcpu;
+  } else {
+    TVMRetValue val;
+    const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch");
+    arch = (*f_get_rocm_arch)().operator std::string();
+    target.Set("mcpu", String("gfx") + arch);
   }
   return target;
 }
@@ -235,7 +258,7 @@ TargetJSON UpdateROCmAttrs(TargetJSON target) {
     if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
       arch = (*f_get_rocm_arch)().operator std::string();
     }
-    target.Set("mcpu", String(arch));
+    target.Set("mcpu", String("gfx") + arch);
   }
   // Update -mattr before ROCm 3.5:
   //   Before ROCm 3.5 we needed code object v2, starting
@@ -346,6 +369,17 @@ TVM_REGISTER_TARGET_KIND("nvptx", kDLCUDA)
     .set_default_keys({"cuda", "gpu"})
     .set_target_parser(UpdateNVPTXAttrs);
 
+TVM_REGISTER_TARGET_KIND("hip", kDLROCM)
+    .add_attr_option<String>("mcpu")
+    // TODO(lei/masihi): Support querying from a target device
+    // On RDNA cards, thread_warp_size should be 32
+    .add_attr_option<Integer>("max_num_threads", Integer(256))
+    .add_attr_option<Integer>("max_threads_per_block", Integer(256))
+    .add_attr_option<Integer>("max_shared_memory_per_block", Integer(65536))
+    .add_attr_option<Integer>("thread_warp_size", Integer(64))
+    .set_default_keys({"rocm", "gpu"})
+    .set_target_parser(UpdateHIPAttrs);
+
 TVM_REGISTER_TARGET_KIND("rocm", kDLROCM)
     .add_attr_option<String>("mcpu")
     .add_attr_option<String>("mtriple")
@@ -394,7 +428,6 @@ TVM_REGISTER_TARGET_KIND("vulkan", kDLVulkan)
     .add_attr_option<Bool>("supports_push_descriptor")
     .add_attr_option<Bool>("supports_dedicated_allocation")
     .add_attr_option<Bool>("supports_integer_dot_product")
-    .add_attr_option<Bool>("supports_cooperative_matrix")
     .add_attr_option<Integer>("supported_subgroup_operations")
     // Physical device limits
     .add_attr_option<Integer>("max_num_threads", Integer(256))
@@ -438,10 +471,9 @@ TVM_REGISTER_TARGET_KIND("hexagon", kDLHexagon)
     .add_attr_option<Array<String>>("llvm-options")
     .add_attr_option<Integer>("num-cores")
     .add_attr_option<Integer>("vtcm-capacity")
-    .set_default_keys({"hexagon", "cpu"});
+    .set_default_keys({"hexagon"});
 
-TVM_REGISTER_TARGET_KIND("stackvm", kDLCPU)  // line break
-    .set_default_keys({"cpu"});
+TVM_REGISTER_TARGET_KIND("stackvm", kDLCPU);
 
 TVM_REGISTER_TARGET_KIND("ext_dev", kDLExtDev);
 
