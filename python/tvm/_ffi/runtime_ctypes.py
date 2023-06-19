@@ -280,6 +280,7 @@ class Device(ctypes.Structure):
         "vulkan": kDLVulkan,
         "metal": kDLMetal,
         "vpi": kDLVPI,
+        "hip": kDLROCM,
         "rocm": kDLROCM,
         "ext_dev": kDLExtDev,
         "hexagon": kDLHexagon,
