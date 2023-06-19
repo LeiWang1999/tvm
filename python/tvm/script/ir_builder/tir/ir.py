@@ -1864,6 +1864,7 @@ ptx_ldmatrix = _dtype_forward(_tir_op.ptx_ldmatrix)
 ptx_cp_async = _dtype_forward(_tir_op.ptx_cp_async)
 mma_store = _dtype_forward(_tir_op.mma_store)
 mma_fill = _dtype_forward(_tir_op.mma_fill)
+tvm_mfma = _dtype_forward(_tir_op.tvm_mfma)
 vectorlow = _dtype_forward(_tir_op.vectorlow)
 vectorhigh = _dtype_forward(_tir_op.vectorhigh)
 vectorcombine = _dtype_forward(_tir_op.vectorcombine)
@@ -2105,6 +2106,7 @@ __all__ = [
     "ptx_commit_group",
     "mma_store",
     "mma_fill",
+    "tvm_mfma",
     "vectorlow",
     "vectorhigh",
     "vectorcombine",

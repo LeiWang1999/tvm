@@ -61,6 +61,7 @@ from .op import (
 )
 from .op import ptx_mma, ptx_mma_sp, mma_store, mma_fill
 from .op import ptx_ldmatrix, ptx_cp_async, ptx_commit_group, ptx_wait_group
+from .op import tvm_mfma
 from .op import vectorlow, vectorhigh, vectorcombine
 from .op import infinity, reinterpret
 from .op import exp, exp2, exp10, log, log2, log10, log1p, ldexp, clz
