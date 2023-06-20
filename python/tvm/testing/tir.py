@@ -148,7 +148,9 @@ def mfma_schedule(
     mfma_store_intrin,
     shared_scope="shared",
 ):
+    """Create a tensorized schedule for GEMM with MFMA intrinsics."""
     import tvm
+
     ir_module = tvm.IRModule({"main": workload})
     sch = tvm.tir.Schedule(ir_module)
 
@@ -187,8 +189,7 @@ def mfma_schedule(
         sch.compute_at(block_read, k0)
         vector_size = 16 if in_dtype == "int8" else 8
         fused = sch.fuse(*sch.get_loops(block_read)[-ndim:])
-        _, f_1, f_2, f_3 = sch.split(
-            fused, factors=[None, num_ty, warp_size, vector_size])
+        _, f_1, f_2, f_3 = sch.split(fused, factors=[None, num_ty, warp_size, vector_size])
         sch.bind(f_2, "threadIdx.x")
         sch.bind(f_1, "threadIdx.y")
         sch.vectorize(f_3)
