@@ -69,12 +69,6 @@ def thread_id_shared_access_64x4_to_16x16_layout_C(thread_id, local_id):
     return i, j
 
 
-def shared_16x16_to_local_64x4_layout_C(i, j):
-    thread_id = j + (i // 4) * 16
-    local = i % 4
-    return thread_id, local
-
-
 def get_mma_fill_intrin(dtype, local_size):
     zero = IntImm("int32", 0).astype(dtype)
 
@@ -295,23 +289,21 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
             T.writes(C[0:WARP_SIZE, 0:local_size_out])
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, WARP_SIZE)
-            T.evaluate(
-                T.tvm_mfma(
-                    mfma_suffix,
-                    "row",
-                    "row",
-                    compute_in_dtype,
-                    compute_in_dtype,
-                    compute_out_dtype,
-                    A.data,
-                    tx * local_size,
-                    B.data,
-                    tx * local_size,
-                    C.data,
-                    tx * local_size_out,
-                    dtype=compute_out_dtype,
-                )
-            )
+            T.evaluate(T.tvm_mfma(
+                mfma_suffix,
+                "row",
+                "row",
+                compute_in_dtype,
+                compute_in_dtype,
+                compute_out_dtype,
+                A.data,
+                A.elem_offset,
+                B.data,
+                B.elem_offset,
+                C.data,
+                C.elem_offset // (WARP_SIZE * local_size_out),
+                dtype=compute_out_dtype,
+            ))
 
     @T.prim_func
     def mfma_sync_impl_integer(a: T.handle, b: T.handle, c: T.handle) -> None:
@@ -329,8 +321,6 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, WARP_SIZE)
 
-            vec_a = A.vload((tx, 0), dtype=f"{in_dtype}x{local_size}")
-            vec_b = B.vload((tx, 0), dtype=f"{in_dtype}x{local_size}")
             T.evaluate(
                 T.tvm_mfma(
                     mfma_suffix,
@@ -339,12 +329,12 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
                     compute_in_dtype,
                     compute_in_dtype,
                     compute_out_dtype,
-                    T.call_intrin("int32", "tir.reinterpret", vec_a),
-                    0,
-                    T.call_intrin("int32", "tir.reinterpret", vec_b),
-                    0,
+                    T.call_intrin("int32", "tir.reinterpret", A.data),
+                    A.elem_offset,
+                    T.call_intrin("int32", "tir.reinterpret", B.data),
+                    B.elem_offset,
                     C.data,
-                    tx * local_size_out,
+                    C.elem_offset // (WARP_SIZE * local_size_out),
                     dtype=compute_out_dtype,
                 )
             )
