@@ -225,16 +225,17 @@ TargetJSON UpdateNVPTXAttrs(TargetJSON target) {
 TargetJSON UpdateHIPAttrs(TargetJSON target) {
   using tvm::runtime::Registry;
   // Update -mcpu=gfx
-  std::string arch;
+  std::string arch = "gfx900";
   if (target.count("mcpu")) {
     String mcpu = Downcast<String>(target.at("mcpu"));
     arch = ExtractStringWithPrefix(mcpu, "gfx");
-    ICHECK(!arch.empty()) << "ValueError: HIP target gets an invalid GFX version: -mcpu=" << mcpu;
+    ICHECK(!arch.empty()) << "ValueError: ROCm target gets an invalid GFX version: -mcpu=" << mcpu;
   } else {
     TVMRetValue val;
-    const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch");
-    arch = (*f_get_rocm_arch)().operator std::string();
-    target.Set("mcpu", String("gfx") + arch);
+    if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
+      arch = (*f_get_rocm_arch)().operator std::string();
+    }
+    target.Set("mcpu", String(arch));
   }
   return target;
 }
@@ -258,7 +259,7 @@ TargetJSON UpdateROCmAttrs(TargetJSON target) {
     if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
       arch = (*f_get_rocm_arch)().operator std::string();
     }
-    target.Set("mcpu", String("gfx") + arch);
+    target.Set("mcpu", String(arch));
   }
   // Update -mattr before ROCm 3.5:
   //   Before ROCm 3.5 we needed code object v2, starting
