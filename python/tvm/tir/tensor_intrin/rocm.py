@@ -24,9 +24,6 @@ from .dot_product_common import dp4a_desc
 from .. import TensorIntrin
 
 
-lift = convert
-
-
 @T.prim_func
 def sdot4(
     A: T.Buffer((4,), "int8", offset_factor=1, align=4, scope="shared"),
