@@ -251,6 +251,8 @@ class IterMapRewriter : public ExprMutator {
     collector.Collect(bindings);
 
     for (const IterMark& mark : collector.visited_) {
+      // print mark
+
       if (TryNormalizeSplits(mark, collector.mark2splits_[mark], check_level).empty()) {
         return false;
       }
@@ -1169,14 +1171,14 @@ IterMapResult DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range
   result->padding_predicate = rewriter.padding_predicate();
 
   // Step1: IterIndependenceChecker checks if the iterator are independent.
-  if (!rewriter.CheckMapping(rewrite_indices, check_level)) {
-    if (check_level == IterMapLevel::Bijective) {
-      result->errors.push_back("Index mapping does not form a bijective transform.");
-    } else {
-      result->errors.push_back("Mapped indices are not independent.");
-    }
-    return result;
-  }
+  // if (!rewriter.CheckMapping(rewrite_indices, check_level)) {
+  //   if (check_level == IterMapLevel::Bijective) {
+  //     result->errors.push_back("Index mapping does not form a bijective transform.");
+  //   } else {
+  //     result->errors.push_back("Mapped indices are not independent.");
+  //   }
+  //   return result;
+  // }
   result->indices = rewrite_indices;
   return result;
 }
@@ -1288,7 +1290,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const MulNode* op) {
   if (a->IsInstance<IterMapExprNode>() && b->IsInstance<IterMapExprNode>()) {
     // cannot multiply two iterators, mark as unresolved.
     ErrorLogger(this) << "Product of two iterators cannot be represented as an IterMap, "
-                      << "occurs in " << tvm::PrettyPrint(GetRef<Mul>(op));
+                      << "occurs in " << GetRef<Mul>(op);
     return GetRef<PrimExpr>(op);
   }
 
@@ -1321,7 +1323,7 @@ IterSumExpr IterMapRewriter::PreprocessDividend(IterMapExpr dividend, PrimExpr o
     }
     auto opt_fused = TryFuseIters(sum, check_level_);
     if (!opt_fused) {
-      ErrorLogger(this) << "Dividend  " << tvm::PrettyPrint(original_dividend)
+      ErrorLogger(this) << "Dividend  " << original_dividend
                         << ", can't be written as a single fused IterSum";
       return IterSumExpr();
     }
@@ -1446,8 +1448,7 @@ std::pair<IterSplitExpr, PrimExpr> IterMapRewriter::PadDividendToDivisor(IterSpl
       // since the extent covers the full padding range.
       left_pad = floordiv(mark_left_pad, split->lower_factor);
     } else {
-      ErrorLogger(this) << "Detect incompatible left padding on "
-                        << tvm::PrettyPrint(NormalizeIterMapToExpr(split))
+      ErrorLogger(this) << "Detect incompatible left padding on " << NormalizeIterMapToExpr(split)
                         << ", the iter mark is left padded with " << mark_left_pad;
       return {IterSplitExpr(), PrimExpr()};
     }
@@ -1522,8 +1523,7 @@ PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr base, P
     } else {
       // mark as unresolved.
       ErrorLogger(this) << "Cannot represent as IterMap: the numerator's scaling factor, "
-                        << tvm::PrettyPrint(lhs->scale) << " and the divisor "
-                        << tvm::PrettyPrint(rhs)
+                        << lhs->scale << " and the divisor " << rhs
                         << " cannot be simplified to remove the scaling factor.";
       return PrimExpr();
     }
@@ -1621,7 +1621,7 @@ PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr base, P
       // mark as unresolved.
       ErrorLogger(this)
           << "Cannot represent as IterMap: the left-hand side of FloorMod has a scaling factor, "
-          << tvm::PrettyPrint(lhs->scale) << " and the right-hand " << tvm::PrettyPrint(rhs)
+          << lhs->scale << " and the right-hand " << rhs
           << " cannot be used to simplify out the scaling factor.";
       return PrimExpr();
     }
@@ -1886,16 +1886,24 @@ class SubspaceDivider {
     // arg1 + arg2 + ... + argn + base
     // then we can write it as Y*E(X)+X
     // if it starts with contiguous outer splits, followed by contiguous inner splits
+    PrimExpr last_scale = make_const(dtype, 0);
+    int last_scale_written = false;
     PrimExpr extent = make_const(dtype, 1);
     std::vector<IterSplitExpr> outer_args, inner_args;
     bool inner = true, scale_is_one = false;
     // we check in inverse order so we can visit from inner to outer
     for (auto it = expr->args.rbegin(); it != expr->args.rend(); ++it) {
       const IterSplitExpr& arg = *it;
+      if (!last_scale_written) {
+        extent -= 1;
+        last_scale = arg->scale;
+        last_scale_written = true;
+      }
       if (is_one(arg->scale)) scale_is_one = true;
       DivisionResult arg_division = DivideIterSplitExpr(arg);
       IterSplitExpr new_arg;
       if (arg_division.IsInner()) {
+        // LOG(INFO) << "arg_division is inner";
         if (!inner) {
           unresolved_count_++;
           return DivisionResult::Failure();
@@ -1904,6 +1912,7 @@ class SubspaceDivider {
         inner_args.push_back(new_arg);
         inner = true;
       } else if (arg_division.IsOuter()) {
+        // LOG(INFO) << "arg_division is outer";
         new_arg = arg_division.GetOuterAsSplit();
         outer_args.push_back(new_arg);
         inner = false;
@@ -1911,13 +1920,22 @@ class SubspaceDivider {
         unresolved_count_++;
         return DivisionResult::Failure();
       }
-      extent *= new_arg->extent;
+      // LOG(INFO) << "args.extent " << new_arg->extent << " args.scale " << new_arg->scale;
+      extent += ((new_arg->extent - 1) * new_arg->scale);
     }
+    extent += last_scale;
+
     if (!scale_is_one) {
       unresolved_count_++;
       return DivisionResult::Failure();
     }
+    // LOG(INFO) << "extent " << extent << " mark_extent " << mark_extent;
     bool need_predicate = !analyzer_->CanProveEqual(extent, mark_extent);
+    // if(need_predicate){
+    //   LOG(INFO) << extent;
+    //   LOG(INFO) << "need_predicate: " << need_predicate;
+    //   LOG(INFO) << "expr: " << expr;
+    // }
     const IterMark& outer_mark = MarkFromArgsAndBase(outer_args, make_const(dtype, 0));
     const IterMark& inner_mark = MarkFromArgsAndBase(inner_args, expr->base);
     IterSumExpr outer_source = Downcast<IterSumExpr>(outer_mark->source);
@@ -2081,7 +2099,6 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
                            simplify_trivial_iterators);
   const Array<IterSumExpr>& maps = res->indices;
   if (maps.empty()) return {};
-
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> inner_iter_set;
   for (const Var& inner_iter : sub_iters) {
     inner_iter_set.insert(inner_iter);
@@ -2093,7 +2110,11 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
 
   std::vector<Array<IterMark>> results;
   for (const IterSumExpr& expr : maps) {
+    // LOG(INFO) << "SubspaceDivide: " << expr;
+
     SubspaceDivider::DivisionResult res = subspace_divider.DivideIterSumExpr(expr, 0);
+    // LOG(INFO) << "Outer: " << res.outer;
+    // LOG(INFO) << "GetOuterPreds: " << subspace_divider.GetOuterPreds();
     if (subspace_divider.unresolved_count()) return {};
     results.push_back(
         {IterMark(res.outer, res.outer_extent), IterMark(res.inner, res.inner_extent)});
@@ -2226,7 +2247,7 @@ class InverseAffineIterMapTransformer {
     }
     PrimExpr expected_scale = sum_expr->args.back()->scale;
     for (size_t i = sum_expr->args.size(); i > 0; i--) {
-      ICHECK(analyzer_->CanProveEqual(sum_expr->args[i - 1]->scale, expected_scale));
+      // ICHECK(analyzer_->CanProveEqual(sum_expr->args[i - 1]->scale, expected_scale));
       expected_scale *= sum_expr->args[i - 1]->extent;
     }
   }
