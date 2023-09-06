@@ -608,6 +608,12 @@ Doc TIRTextPrinter::VisitStmt_(const PrefetchNode* op) {
   return doc;
 }
 
+Doc TIRTextPrinter::VisitStmt_(const RasterNode* op) {
+  Doc doc;
+  doc << "raster(" << Print(op->stage) << ")";
+  return doc;
+}
+
 Doc TIRTextPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const auto* block_op = op->block.as<BlockNode>();
   // print block name and block vars

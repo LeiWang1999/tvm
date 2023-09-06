@@ -618,6 +618,25 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << ")";
     });
 
+// Raster
+Raster::Raster(PrimExpr stage, Span span) { data_ = make_object<RasterNode>(stage, span); }
+
+TVM_REGISTER_GLOBAL("tir.Raster").set_body_typed([](PrimExpr stage, Span span) {
+  return Raster(stage, span);
+});
+
+TVM_REGISTER_NODE_TYPE(RasterNode);
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<RasterNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const RasterNode*>(node.get());
+      p->PrintIndent();
+      p->stream << "raster "
+                << "(";
+      p->stream << op->stage;
+      p->stream << ")";
+    });
+
 // SeqStmt
 SeqStmt::SeqStmt(Array<Stmt> seq, Span span) {
   auto node = make_object<SeqStmtNode>();

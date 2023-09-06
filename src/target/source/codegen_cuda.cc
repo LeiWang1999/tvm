@@ -134,6 +134,19 @@ std::string CodeGenCUDA::Finish() {
     decl_stream << "#include <mma.h>\n";
   }
 
+  decl_stream << "\n#if (((__CUDACC_VER_MAJOR__ == 11) && (__CUDACC_VER_MINOR__ >= 4)) || \\\n";
+  decl_stream << "     (__CUDACC_VER_MAJOR__ > 11))\n";
+  decl_stream << "#define TVM_ENABLE_L2_PREFETCH 1\n";
+  decl_stream << "#else\n";
+  decl_stream << "#define TVM_ENABLE_L2_PREFETCH 0\n";
+  decl_stream << "#endif\n";
+
+  // decl_stream << "\n#if (__CUDACC_VER_MAJOR__ >= 11) \n";
+  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 1\n";
+  // decl_stream << "#else\n";
+  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 0\n";
+  // decl_stream << "#endif\n";
+
   decl_stream << "\n#ifdef _WIN32\n";
   decl_stream << "  using uint = unsigned int;\n";
   decl_stream << "  using uchar = unsigned char;\n";
@@ -149,6 +162,25 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "#endif\n";
 
   return CodeGenC::Finish();
+}
+
+void CodeGenCUDA::VisitStmt_(const RasterNode* op) {
+  ICHECK(is_positive_const(op->stage));
+  this->stream << "\n";
+  PrintIndent();
+  stream << "const int MAX_BLOCK_N = " << op->stage << ";";
+  stream << R"(
+  const auto baseBlockIdx = blockIdx.x + gridDim.x *blockIdx.y;
+  const auto totalPanel = (gridDim.x * gridDim.y +MAX_BLOCK_N * gridDim.x - 1) / (MAX_BLOCK_N * gridDim.x);
+  const auto totalBlock = gridDim.x * gridDim.y;
+  const auto panelIdx = baseBlockIdx / (MAX_BLOCK_N *gridDim.x);
+  const auto strideLd = panelIdx + 1 < totalPanel ?MAX_BLOCK_N : (totalBlock - panelIdx * (MAX_BLOCK_N *gridDim.x)) / gridDim.x;
+  const auto bx = (panelIdx & 1) ? gridDim.x -(baseBlockIdx - panelIdx * MAX_BLOCK_N * gridDim.x) /strideLd - 1 : (baseBlockIdx - panelIdx * MAX_BLOCK_N *gridDim.x) / strideLd;
+  const auto by = (baseBlockIdx - panelIdx * MAX_BLOCK_N *gridDim.x) % strideLd + panelIdx * MAX_BLOCK_N;
+  const auto bz = blockIdx.z;
+  const dim3 blockIdx(bx, by, bz);
+  
+)";
 }
 
 void CodeGenCUDA::VisitStmt_(const tir::ForNode* op) {
@@ -877,11 +909,18 @@ void CodeGenCUDA::VisitExpr_(const CallNode* op, std::ostream& os) {
 
     var_idmap_[inverse_index_map->initial_indices[0].get()] = "threadIdx.x";
     var_idmap_[inverse_index_map->initial_indices[1].get()] = "local_id";
-
-    os << "for (int local_id = 0; local_id < 8; ++local_id) {\n";
-    os << dst << "[" + this->PrintExpr(dst_ind) + "]"
-       << " = " << src << "[" << src_offset << " + local_id];\n";
-    os << "}\n";
+    if (op->dtype.bits() == 16) {
+      os << "for (int local_id = 0; local_id < 8; local_id+=2) {\n";
+      os << "*((uint *)&" << dst << "[" + this->PrintExpr(dst_ind) + "])"
+         << " = "
+         << "*((uint *)&" << src << "[" << src_offset << " + local_id]);\n";
+      os << "}\n";
+    } else {
+      os << "for (int local_id = 0; local_id < 8; ++local_id) {\n";
+      os << dst << "[" + this->PrintExpr(dst_ind) + "]"
+         << " = " << src << "[" << src_offset << " + local_id];\n";
+      os << "}\n";
+    }
 
   } else if (op->op.same_as(builtin::mma_fill())) {
     std::string num_elem = this->PrintExpr(op->args[0]);

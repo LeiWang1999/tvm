@@ -119,6 +119,8 @@ void StmtVisitor::VisitStmt_(const PrefetchNode* op) {
   });
 }
 
+void StmtVisitor::VisitStmt_(const RasterNode* op) { this->VisitExpr(op->stage); }
+
 void StmtVisitor::VisitStmt_(const SeqStmtNode* op) {
   VisitArray(op->seq, [this](const Stmt& s) { this->VisitStmt(s); });
 }
@@ -438,6 +440,18 @@ Stmt StmtMutator::VisitStmt_(const PrefetchNode* op) {
   } else {
     auto n = CopyOnWrite(op);
     n->bounds = std::move(bounds);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const RasterNode* op) {
+  PrimExpr stage = this->VisitExpr(op->stage);
+
+  if (stage.same_as(op->stage)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->stage = std::move(stage);
     return Stmt(n);
   }
 }

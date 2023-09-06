@@ -214,6 +214,7 @@ def create_updater_06_to_07():
         "Load": _rename("tir.Load"),
         "BufferLoad": _rename("tir.BufferLoad"),
         "Ramp": _rename("tir.Ramp"),
+        "Raster": _rename("tir.Raster"),
         "Broadcast": _rename("tir.Broadcast"),
         "Shuffle": _rename("tir.Shuffle"),
         "Call": [_rename("tir.Call"), _update_from_std_str("name")],

@@ -1112,6 +1112,34 @@ class Prefetch : public Stmt {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrefetchNode);
 };
 
+class RasterNode : public StmtNode {
+ public:
+  PrimExpr stage;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("stage", &stage);
+    v->Visit("span", &span);
+  }
+
+  bool SEqualReduce(const RasterNode* other, SEqualReducer equal) const {
+    return equal(stage, other->stage);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(stage); }
+
+  RasterNode() = default;
+  RasterNode(PrimExpr stage, Span span = Span()) : StmtNode(span), stage(stage) {}
+  static constexpr const char* _type_key = "tir.Raster";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RasterNode, StmtNode);
+};
+
+class Raster : public Stmt {
+ public:
+  TVM_DLL explicit Raster(PrimExpr stage, Span span = Span());
+  TVM_DEFINE_OBJECT_REF_METHODS(Raster, Stmt, RasterNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(RasterNode);
+};
+
 /*!
  * \brief Representing the region of multi-dimensional buffer access.
  */
@@ -1557,6 +1585,9 @@ constexpr const char* software_pipeline_order = "software_pipeline_order";
  *       semantics (e.g. CUDA async global to shared memory copy).
  */
 constexpr const char* software_pipeline_async_stages = "software_pipeline_async_stages";
+
+/*! \brief Mark the rasterization of gpu thread block */
+constexpr const char* thread_rasterization = "thread_rasterization";
 
 /*! \brief Mark the buffers which is const access and can be transformed layout. */
 constexpr const char* layout_free_buffers = "layout_free_buffers";

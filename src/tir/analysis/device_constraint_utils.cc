@@ -341,6 +341,15 @@ class ApplyDeviceConstraintsMutator : public StmtExprMutator {
     return std::move(new_prefetch);
   }
 
+  Stmt VisitStmt_(const RasterNode* raster_node) final {
+    Raster new_raster = Downcast<Raster>(StmtExprMutator::VisitStmt_(raster_node));
+    PrimExpr new_stage = new_raster->stage;
+    if (!new_stage.same_as(new_raster->stage)) {
+      return Raster(new_stage, raster_node->span);
+    }
+    return std::move(new_raster);
+  }
+
   // SeqStmtNode default ok
   // EvaluateNode default ok
 
