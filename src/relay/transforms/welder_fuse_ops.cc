@@ -96,14 +96,29 @@ struct TaggedNodeGraph {
     for (auto& node : nodes) {
       if (node->reverse_inlined_) {
         // assert the node has only one output
-        CHECK_EQ(node->out_edges_.size(), 1);
+        // CHECK_EQ(node->out_edges_.size(), 1);
         auto out_node = node->out_edges_[0];
         // set the group id of the input node to the group id of the output node
         node->group_id_ = out_node->group_id_;
       }
     }
     // phase 4: Fuse inline ops
-    inline_lightweighted_ops();  
+    inline_lightweighted_ops(); 
+    // // phase 5: handle non-group nodes
+    // LOG(INFO) << "after inline lightweighted ops";
+    // for (auto& node : nodes) {
+    //   if (node->op_type_ == "strided_slice"){
+    //     LOG(INFO) << "node "
+    //               << "node " << node->op_type_ << " group_id " << node->group_id_ << "node->input_"
+    //               << node->in_edges_.size() << " " << node->in_edges_[0]->op_type_;
+    //     if (node->group_id_ == -1) {
+    //       LOG(INFO) << "is non-group node";
+    //       LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_
+    //                 << " " << node->reverse_inlined_;
+    //       node->group_id_ = num_group_++;
+    //     }
+    //   }
+    // }
   }
 
   bool is_inlinable(const TaggedNode* node) {
@@ -119,7 +134,14 @@ struct TaggedNodeGraph {
           if (!((src_node->inlined_ && src_node->out_edges_.size() == 1) || src_node->visited_)) {
             node->inlined_ = false;
             if (src_node->out_edges_.size() > 1 && node->in_edges_.size() == 1) {
-              node->reverse_inlined_ = true;
+              // dst node is not ladder_perfect
+              auto dst_node_type = node->out_edges_[0]->op_type_;
+              if (dst_node_type == "ladder.perfect_im2col_conv" ||
+                  dst_node_type == "ladder.C2DImplicitGemm" ||
+                  dst_node_type == "welder.C2DImplicitGemm") {
+                node->reverse_inlined_ = false;
+              } else
+                node->reverse_inlined_ = true;
             }
             break;
           }
@@ -393,6 +415,7 @@ private:
 
   void VisitExpr_(const ConstantNode* op) final {
     if (op->is_scalar()) {
+      LOG(INFO) << "constant node " << op->data;
       auto node = new TaggedNode(op, g_.nodes.size());
       g_.nodes.push_back(node);
       g_.node_map[op] = node;

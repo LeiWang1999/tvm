@@ -33,8 +33,8 @@ def verify_matmul_add(in_dtype, out_dtype, rtol=1e-5):
     l = 128
     m = 236
     A = te.placeholder((n, l), name="A", dtype=in_dtype)
-    B = te.placeholder((l, m), name="B", dtype=in_dtype)
-    C = cublas.matmul(A, B, dtype=out_dtype)
+    B = te.placeholder((m, l), name="B", dtype=in_dtype)
+    C = cublas.matmul(A, B, dtype=out_dtype, transa=False, transb=True)
     s = te.create_schedule(C.op)
 
     def verify(target="cuda"):
@@ -44,11 +44,11 @@ def verify_matmul_add(in_dtype, out_dtype, rtol=1e-5):
         dev = tvm.cuda(0)
         f = tvm.build(s, [A, B, C], target)
         a = tvm.nd.array(np.random.uniform(0, 128, size=(n, l)).astype(A.dtype), dev)
-        b = tvm.nd.array(np.random.uniform(0, 128, size=(l, m)).astype(B.dtype), dev)
+        b = tvm.nd.array(np.random.uniform(0, 128, size=(m, l)).astype(B.dtype), dev)
         c = tvm.nd.array(np.zeros((n, m), dtype=C.dtype), dev)
         f(a, b, c)
         tvm.testing.assert_allclose(
-            c.numpy(), np.dot(a.numpy().astype(C.dtype), b.numpy().astype(C.dtype)), rtol=rtol
+            c.numpy(), np.dot(a.numpy().astype(C.dtype), b.numpy().T.astype(C.dtype)), rtol=rtol
         )
 
     verify()
@@ -378,4 +378,5 @@ def test_relay_cublas_dense(n, m, k, in_dtype, out_dtype):
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    # pytest.main([__file__])
+    verify_matmul_add("float16", "float16", rtol=1e-3)
