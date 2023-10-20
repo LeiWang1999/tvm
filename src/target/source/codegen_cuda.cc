@@ -141,11 +141,11 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "#define TVM_ENABLE_L2_PREFETCH 0\n";
   decl_stream << "#endif\n";
 
-  // decl_stream << "\n#if (__CUDACC_VER_MAJOR__ >= 11) \n";
-  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 1\n";
-  // decl_stream << "#else\n";
-  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 0\n";
-  // decl_stream << "#endif\n";
+  decl_stream << "\n##if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800 \n";
+  decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 1\n";
+  decl_stream << "#else\n";
+  decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 0\n";
+  decl_stream << "#endif\n";
 
   decl_stream << "\n#ifdef _WIN32\n";
   decl_stream << "  using uint = unsigned int;\n";
