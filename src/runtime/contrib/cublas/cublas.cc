@@ -49,6 +49,9 @@ struct CublasHgemmOp {
 
   void operator()(bool ta, bool tb, int M, int N, int K, half alpha, half* A, int lda, half* B,
                   int ldb, half beta, half* C, int ldc) {
+    // LOG(INFO) << "CublasHgemmOp";
+    // LOG(INFO) << "ta: " << ta << " tb: " << tb << " M: " << M << " N: " << N << " K: " << K;
+    // LOG(INFO) << "lda: " << lda << " ldb: " << ldb << " ldc: " << ldc;
     CHECK_CUBLAS_ERROR(cublasHgemm(handle, CUBLASBooleanToTranspose(ta),
                                    CUBLASBooleanToTranspose(tb), M, N, K, &alpha, A, lda, B, ldb,
                                    &beta, C, ldc));

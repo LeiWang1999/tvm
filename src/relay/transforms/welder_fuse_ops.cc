@@ -39,6 +39,7 @@ struct TaggedNode {
   {
     visited_ = false;
     inlined_ = false;
+    reverse_inlined_ = false;
     group_id_ = -1;
     kind_ = kOpaque;
   }
@@ -47,7 +48,7 @@ struct TaggedNode {
 
   const ExprNode* node_;
   int id_, group_id_;
-  bool visited_, inlined_;
+  bool visited_, inlined_, reverse_inlined_;
   Shape shape_;
   OpPatternKind kind_;
   String op_type_;
@@ -63,31 +64,61 @@ struct TaggedNodeGraph {
   void RunFuse() {
     // phase 1: Fuse from complex Ops
     for (auto& node : nodes) {
-      if (is_inlinable(node) || node->visited_ || node->op_type_ == "Tensor")
-        continue;
+      if (is_inlinable(node) || node->visited_ || node->op_type_ == "Tensor") continue;
       fuse_from_node(node);
     }
     // phase 2: Fuse from Sinple Ops
     for (auto& node : nodes) {
       node->visited_ = false;
       node->inlined_ = false;
+      node->reverse_inlined_ = false;
     }
+
     update_inline_nodes();
+    // LOG(INFO) << "after update inline nodes";
     for (auto& node : nodes) {
+      // LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << "
+      // " << node->reverse_inlined_;
       if (node->op_type_ == "Tensor" || node->visited_)
         continue;
-      else if (node->group_id_ >= 0) { // already fused
+      else if (node->group_id_ >= 0) {  // already fused
         node->visited_ = true;
         update_inline_nodes();
-      } else if (node->inlined_ && node->out_edges_.size() == 1 && node->out_edges_[0]->group_id_ == -1) {
+      } else if (node->inlined_ && node->out_edges_.size() == 1 &&
+                 node->out_edges_[0]->group_id_ == -1) {
         // Process these nodes in the next phase
         continue;
       } else {
         fuse_from_node(node);
       }
     }
-    // phase 3: Fuse inline ops
-    inline_lightweighted_ops();
+    // phase 3: handle reserve inlined nodes
+    for (auto& node : nodes) {
+      if (node->reverse_inlined_) {
+        // assert the node has only one output
+        // CHECK_EQ(node->out_edges_.size(), 1);
+        auto out_node = node->out_edges_[0];
+        // set the group id of the input node to the group id of the output node
+        node->group_id_ = out_node->group_id_;
+      }
+    }
+    // phase 4: Fuse inline ops
+    inline_lightweighted_ops(); 
+    // // phase 5: handle non-group nodes
+    // LOG(INFO) << "after inline lightweighted ops";
+    // for (auto& node : nodes) {
+    //   if (node->op_type_ == "strided_slice"){
+    //     LOG(INFO) << "node "
+    //               << "node " << node->op_type_ << " group_id " << node->group_id_ << "node->input_"
+    //               << node->in_edges_.size() << " " << node->in_edges_[0]->op_type_;
+    //     if (node->group_id_ == -1) {
+    //       LOG(INFO) << "is non-group node";
+    //       LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_
+    //                 << " " << node->reverse_inlined_;
+    //       node->group_id_ = num_group_++;
+    //     }
+    //   }
+    // }
   }
 
   bool is_inlinable(const TaggedNode* node) {
@@ -96,13 +127,22 @@ struct TaggedNodeGraph {
 
   void update_inline_nodes() {
     for (auto& node : nodes) {
-      if (node->inlined_ || node->visited_)
-        continue;
+      if (node->inlined_ || node->visited_) continue;
       if (is_inlinable(node)) {
         node->inlined_ = true;
         for (auto src_node : node->in_edges_) {
           if (!((src_node->inlined_ && src_node->out_edges_.size() == 1) || src_node->visited_)) {
             node->inlined_ = false;
+            if (src_node->out_edges_.size() > 1 && node->in_edges_.size() == 1) {
+              // dst node is not ladder_perfect
+              auto dst_node_type = node->out_edges_[0]->op_type_;
+              if (dst_node_type == "ladder.perfect_im2col_conv" ||
+                  dst_node_type == "ladder.C2DImplicitGemm" ||
+                  dst_node_type == "welder.C2DImplicitGemm") {
+                node->reverse_inlined_ = false;
+              } else
+                node->reverse_inlined_ = true;
+            }
             break;
           }
         }
@@ -114,7 +154,7 @@ struct TaggedNodeGraph {
     std::unordered_set<const TaggedNode*> block_list;
     auto cmp = [](const TaggedNode* a, const TaggedNode* b) { return a->id_ > b->id_; };
     std::priority_queue<TaggedNode*, std::vector<TaggedNode*>, decltype(cmp)> queue(cmp);
-
+    if (top_node->reverse_inlined_) return;
     top_node->group_id_ = num_group_++;
     queue.push(top_node);
 
@@ -133,6 +173,7 @@ struct TaggedNodeGraph {
         fusible &= (!skip_ops.count(tnode->op_type_) && !skip_ops.count(top_node->op_type_));
         fusible &= (tnode->kind_ != kOpaque && top_node->kind_ != kOpaque);
         fusible &= !(top_node->kind_ == kOutEWiseFusable && tnode->kind_ > kBroadcast);
+        fusible &= (!tnode->reverse_inlined_);
       }
 
       // add to group
@@ -154,6 +195,7 @@ struct TaggedNodeGraph {
     for (auto in_node : tnode->in_edges_) {
       if (in_node->visited_) continue;
       if (!in_node->inlined_) continue;
+      if (in_node->reverse_inlined_) continue;
       CHECK(in_node->inlined_);
       in_node->group_id_ = tnode->group_id_;
       in_node->visited_ = true;
@@ -373,6 +415,7 @@ private:
 
   void VisitExpr_(const ConstantNode* op) final {
     if (op->is_scalar()) {
+      LOG(INFO) << "constant node " << op->data;
       auto node = new TaggedNode(op, g_.nodes.size());
       g_.nodes.push_back(node);
       g_.node_map[op] = node;

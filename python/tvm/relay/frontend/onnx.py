@@ -4780,6 +4780,56 @@ class QLinearMatMul(OnnxOpConverter):
         return y
 
 
+class QuantLinear(OnnxOpConverter):
+    """
+    Operator converter for QuantLinear from AutoGPTQ
+    """
+
+    @classmethod
+    def _impl_v10(cls, inputs, attr, params, expected_out_dtypes=None):
+        if expected_out_dtypes is None:
+            # The default QLinearMatMul converter is expected to have one of
+            # these output dtypes.
+            expected_out_dtypes = ["int8", "uint8"]
+
+        # Some of the ops used below take scalar-like inputs, and may require either
+        # of the following:
+        #
+        # - the input is Const node (not merely an expression that *could* be reduced
+        #   to a single Const at graph-compilation time)
+        #
+        # - the input has a specific dtype
+        #
+        # This function attempts to present 'x' in a form that meets both of those
+        # requirements.
+        def try_resolve_to_const(x, dtype_override=None):
+            x2 = try_resolve_var_to_const(x, params)
+            num_elem = np.prod(infer_shape(x))
+            if num_elem == 1:
+                x2 = ensure_scalar_shape(x2)
+            x_dtype = infer_type(x).checked_type.dtype
+            if (dtype_override is not None) and (dtype_override != x_dtype):
+                x2 = _op.cast(x2, dtype_override)
+            x3 = fold_constant(x2)
+            return x3
+
+        # Unpack the inputs and obtain some type info...
+        a, b, scales, zeros = inputs
+
+
+        a_type = infer_type(a).checked_type  # 'T1' in ONNX doc for this op
+        b_type = infer_type(b).checked_type  # 'T2' in ONNX doc for this op
+        scales_type = infer_type(scales).checked_type
+        zeros_type = infer_type(zeros).checked_type
+        
+        # Verify type assumptions, based on the ONNX doc for this op...
+        assert b_type.dtype in ["int8", "uint8"]
+        assert scales_type.dtype == a_type.dtype
+        assert zeros_type.dtype == a_type.dtype
+        
+        return relay.Call(_op.get("ladder.quant_linear"), inputs, make_node("DictAttrs", transpose_a=False, transpose_b=True))
+
+
 class MatMulInteger(OnnxOpConverter):
     """Operator converter for MatMulInteger."""
 
@@ -5794,6 +5844,7 @@ def _get_convert_map(opset):
         "QLinearAveragePool": QLinearAveragePool.get_converter(opset),
         "QLinearGlobalAveragePool": QLinearGlobalAveragePool.get_converter(opset),
         "QLinearLeakyRelu": QLinearLeakyRelu.get_converter(opset),
+        "QuantLinear" : QuantLinear.get_converter(opset),
         # Random number generation.
         "RandomNormal": RandomNormal.get_converter(opset),
         "RandomNormalLike": RandomNormalLike.get_converter(opset),
@@ -6015,7 +6066,6 @@ class GraphProto:
             attr["tvm_custom"] = {}
             attr["tvm_custom"]["name"] = i_name
             attr["tvm_custom"]["num_outputs"] = len(node_output)
-
             op = self._convert_operator(op_name, inputs, attr, self.opset)
             if not isinstance(op, _expr.TupleWrapper):
                 outputs_num = 1
