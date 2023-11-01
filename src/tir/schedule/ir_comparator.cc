@@ -83,6 +83,11 @@ bool TensorizeComparator::VisitExpr(const PrimExpr& n, const PrimExpr& other) {
   return equal;
 }
 
+bool TensorizeComparator::VisitExpr_(const CallNode* op, const PrimExpr& other) {
+  // todo(leiwang1999):  visit a call op, comparing is not supported by current tvm, forcing return true.
+  return true;
+}
+
 bool TensorizeComparator::VisitStmt_(const ForNode* op, const Stmt& other) {
   const auto* rhs = other.as<ForNode>();
   if (!DefEqual(op->loop_var, rhs->loop_var)) {

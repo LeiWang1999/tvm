@@ -610,6 +610,7 @@ void Tensorize(ScheduleState self, const StmtSRef& sref, const TensorIntrin& int
   } else {
     self->Replace(sref, block_realize, {});
   }
+
   // Step 6: Update the cached flags.
   StmtSRef result = self->stmt2ref.at(block_realize->block.get());
   StmtSRef scope_root = tir::GetScopeRoot(self, result, /*require_stage_pipeline=*/false);
