@@ -102,6 +102,39 @@ std::string CodeGenCUDA::Finish() {
     decl_stream << _cuda_half_t_def;
     decl_stream << "#endif\n\n";
     decl_stream << _cuda_half_util;
+
+    decl_stream << R"(
+__device__ void decode_i4s_to_f16(int *i4s, half* B_local_decode) {
+  uint* h = reinterpret_cast<uint*>(B_local_decode);
+  
+  static constexpr uint immLut = (0xf0 & 0xcc) | 0xaa;
+  static constexpr uint BOTTOM_MASK = 0x000f000f;
+  static constexpr uint TOP_MASK = 0x00f000f0;
+  static constexpr uint I4s_TO_F16s_MAGIC_NUM = 0x64006400;
+  static constexpr uint FP16_TOP_MAGIC_NUM = 0x64086408;
+  static constexpr uint ONE_SIXTEENTH = 0x2c002c00;
+  static constexpr uint NEG_72 = 0xd480d480;
+
+  uint const top_i4s = (*i4s) >> 8;
+  // Decoding operations using inline PTX
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                : "=r"(h[0])
+                : "r"(*i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                : "=r"(h[1])
+                : "r"(*i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                : "=r"(h[2])
+                : "r"(top_i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                : "=r"(h[3])
+                : "r"(top_i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[0]) : "r"(h[0]), "r"(FP16_TOP_MAGIC_NUM));
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[1]) : "r"(h[1]), "r"(ONE_SIXTEENTH), "r"(NEG_72));
+  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[2]) : "r"(h[2]), "r"(FP16_TOP_MAGIC_NUM));
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_72));
+}
+  )";
   }
 
   if (enable_bf16_) {
@@ -141,17 +174,17 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "#define TVM_ENABLE_L2_PREFETCH 0\n";
   decl_stream << "#endif\n";
 
-  // decl_stream << "\n#if (__CUDACC_VER_MAJOR__ >= 11) \n";
-  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 1\n";
-  // decl_stream << "#else\n";
-  // decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 0\n";
-  // decl_stream << "#endif\n";
+  decl_stream << "\n#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 800) \n";
+  decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 1\n";
+  decl_stream << "#else\n";
+  decl_stream << "#define TVM_ENBALE_EFFICIENT_SMEM_PTR_CAST 0\n";
+  decl_stream << "#endif\n";
 
   decl_stream << "\n#ifdef _WIN32\n";
   decl_stream << "  using uint = unsigned int;\n";
   decl_stream << "  using uchar = unsigned char;\n";
   decl_stream << "  using ushort = unsigned short;\n";
-  decl_stream << "  using int64_t = long long;\n";
+  decl_stream << "  using ushort = unsigned short;\n";
   decl_stream << "  using uint64_t = unsigned long long;\n";
   decl_stream << "#else\n";
   decl_stream << "  #define uint unsigned int\n";
@@ -160,7 +193,6 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "  #define int64_t long long\n";
   decl_stream << "  #define uint64_t unsigned long long\n";
   decl_stream << "#endif\n";
-
   return CodeGenC::Finish();
 }
 

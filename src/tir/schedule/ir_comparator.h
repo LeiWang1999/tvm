@@ -75,6 +75,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool VisitExpr_(const VarNode* op, const PrimExpr& other) override;
   bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) override;
   bool VisitExpr_(const SelectNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const CallNode* op, const PrimExpr& other);
 
   /*! \brief Map from RHS buffer to LHS buffer */
   std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
