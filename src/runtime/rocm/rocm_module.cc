@@ -100,7 +100,7 @@ class ROCMModuleNode : public runtime::ModuleNode {
     // must recheck under the lock scope
 
     if (module_[device_id] == nullptr) {
-      ROCM_DRIVER_CALL(hipModuleLoadData(&(module_[device_id]), data_.c_str()));
+    ROCM_DRIVER_CALL(hipModuleLoadData(&(module_[device_id]), data_.c_str()));
     }
     hipFunction_t func;
     hipError_t result = hipModuleGetFunction(&func, module_[device_id], func_name.c_str());

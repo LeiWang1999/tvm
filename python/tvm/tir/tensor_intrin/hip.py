@@ -1,56 +1,10 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-# pylint: disable=invalid-name,missing-function-docstring
-"""Intrinsics for AMDGPU tensorization."""
-from tvm.script import tir as T
-
+import tvm.tir
 from tvm.runtime import convert
 from tvm.tir.expr import Cast, IntImm
-from .dot_product_common import dp4a_desc
-from .. import TensorIntrin
-
+from tvm.tir.function import TensorIntrin
+from tvm.script import tir as T
 
 lift = convert
-
-
-@T.prim_func
-def sdot4(
-    A: T.Buffer((4,), "int8", offset_factor=1, align=4, scope="shared"),
-    B: T.Buffer((4,), "int8", offset_factor=1, align=4, scope="shared"),
-    C: T.Buffer((1,), "int32", offset_factor=1, align=4, scope="local"),
-) -> None:
-    with T.block("root"):
-        T.reads(C[0], A[0:4], B[0:4])
-        T.writes(C[0])
-
-        C[0] += T.call_llvm_pure_intrin(
-            T.llvm_lookup_intrinsic_id("llvm.amdgcn.sdot4"),
-            T.uint32(4),
-            T.reinterpret(A.vload([0], "int8x4"), dtype="int32"),
-            T.reinterpret(B.vload([0], "int8x4"), dtype="int32"),
-            T.int32(0),
-            T.bool(1),
-            dtype="int32",
-        )
-
-
-AMDGPU_SDOT4_INTRIN = "sdot4"
-
-TensorIntrin.register(AMDGPU_SDOT4_INTRIN, dp4a_desc, sdot4)
 
 WARP_SIZE = 64
 M_DIM = 16
@@ -64,7 +18,7 @@ def shared_16x4_to_local_64x1_layout_A(i, j):
 
 def thread_id_shared_access_64x1_to_16x4_layout_A(thread_id, local_id):
     i = thread_id % 16
-    j = thread_id // 16 + local_id
+    j = thread_id // 16
     return i, j
 
 
@@ -75,7 +29,7 @@ def shared_4x16_to_local_64x1_layout_B(i, j):
 
 def thread_id_shared_access_64x1_to_4x16_layout_B(thread_id, local_id):
     i = thread_id // 16
-    j = thread_id % 16 + local_id
+    j = thread_id % 16
     return i, j
 
 
@@ -145,10 +99,9 @@ def get_mma_fill_intrin(dtype, local_size):
         with T.block("root"):
             T.reads()
             T.writes(C_warp[0:WARP_SIZE, 0:local_size])
-            tx = T.env_thread("threadIdx.x")
-            T.launch_thread(tx, WARP_SIZE)
-            for local_id in T.serial(0, local_size):
-                C_warp[tx, local_id] = zero
+            for tx in T.thread_binding(WARP_SIZE, "threadIdx.x"):
+                for local_id in T.serial(0, local_size):
+                    C_warp[tx, local_id] = zero
 
     return mma_fill_desc, mma_fill_impl
 
@@ -246,11 +199,10 @@ def get_mfma_load_intrin(
         with T.block("root"):
             T.reads(memory[0:row_dim, 0:col_dim])
             T.writes(reg[0:WARP_SIZE, 0:local_size])
-            tx = T.env_thread("threadIdx.x")
-            for local_id in T.serial(0, local_size):
-                row, col = T.meta_var(reverse_index_map(tx, local_id))
-                T.launch_thread(tx, WARP_SIZE)
-                reg[tx, local_id] = memory[row, col]
+            for tx in T.thread_binding(WARP_SIZE, "threadIdx.x"):
+                for local_id in T.serial(0, local_size):
+                    row, col = T.meta_var(reverse_index_map(tx, local_id))
+                    reg[tx, local_id] = memory[row, col]
 
     return mfma_load_desc, mfma_load_impl
 
@@ -258,6 +210,9 @@ def get_mfma_load_intrin(
 def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed=False):
     local_size = (M_DIM * k_dim) // WARP_SIZE
     local_size_out = (M_DIM * N_DIM) // WARP_SIZE
+    compute_in_dtype = in_dtype if local_size == 1 else f"{in_dtype}x{local_size}"
+    compute_out_dtype = out_dtype if local_size_out == 1 else f"{out_dtype}x{local_size_out}"
+
     if k_dim == 4:
         index_map_A = shared_16x4_to_local_64x1_layout_A
         index_map_B = shared_4x16_to_local_64x1_layout_B
@@ -273,7 +228,7 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
 
     in_dtype_abbrv = {"float16": "f16", "float32": "f32", "int8": "i8", "int32": "i32"}[in_dtype]
 
-    mfma_intrin = f"llvm.amdgcn.mfma.{out_dtype_abbrv}.{M_DIM}x{N_DIM}x{k_dim}{in_dtype_abbrv}"
+    mfma_suffix = f"{out_dtype_abbrv}_{M_DIM}x{N_DIM}x{k_dim}{in_dtype_abbrv}"
 
     def maybe_cast(v):
         if out_dtype != in_dtype:
@@ -334,17 +289,21 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
             T.writes(C[0:WARP_SIZE, 0:local_size_out])
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, WARP_SIZE)
-            C[tx, 0:local_size_out] = T.call_llvm_pure_intrin(
-                T.llvm_lookup_intrinsic_id(mfma_intrin),
-                T.uint32(6),
-                A[tx, 0:local_size],
-                B[tx, 0:local_size],
-                C[tx, 0:local_size_out],
-                T.int32(0),
-                T.int32(0),
-                T.int32(0),
-                dtype=f"{out_dtype}x4",
-            )
+            T.evaluate(T.tvm_mfma(
+                mfma_suffix,
+                "row",
+                "row",
+                compute_in_dtype,
+                compute_in_dtype,
+                compute_out_dtype,
+                A.data,
+                A.elem_offset,
+                B.data,
+                B.elem_offset,
+                C.data,
+                C.elem_offset // (WARP_SIZE * local_size_out),
+                dtype=compute_out_dtype,
+            ))
 
     @T.prim_func
     def mfma_sync_impl_integer(a: T.handle, b: T.handle, c: T.handle) -> None:
@@ -362,16 +321,22 @@ def get_mfma_intrin(k_dim, in_dtype="float32", out_dtype="float32", b_transposed
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, WARP_SIZE)
 
-            C[tx, 0:local_size_out] = T.call_llvm_pure_intrin(
-                T.llvm_lookup_intrinsic_id(mfma_intrin),
-                T.uint32(6),
-                T.call_intrin("int32", "tir.reinterpret", A[tx, 0:local_size]),
-                T.call_intrin("int32", "tir.reinterpret", B[tx, 0:local_size]),
-                C[tx, 0:local_size_out],
-                T.int32(0),
-                T.int32(0),
-                T.int32(0),
-                dtype=f"{out_dtype}x4",
+            T.evaluate(
+                T.tvm_mfma(
+                    mfma_suffix,
+                    "row",
+                    "row",
+                    compute_in_dtype,
+                    compute_in_dtype,
+                    compute_out_dtype,
+                    T.call_intrin("int32", "tir.reinterpret", A.data),
+                    A.elem_offset,
+                    T.call_intrin("int32", "tir.reinterpret", B.data),
+                    B.elem_offset,
+                    C.data,
+                    C.elem_offset // (WARP_SIZE * local_size_out),
+                    dtype=compute_out_dtype,
+                )
             )
 
     return (
@@ -423,57 +388,54 @@ def get_mfma_store_intrin(local_size=4, dtype="float32", scope="global"):
     return mfma_store_desc, mfma_store_impl
 
 
-ROCM_MFMA_fill_16x16_f32_INTRIN = "ROCM_mfma_fill_16x16_f32"
-TensorIntrin.register(ROCM_MFMA_fill_16x16_f32_INTRIN, *get_mma_fill_intrin("float32", 4))
+HIP_MFMA_fill_16x16_f32_INTRIN = "HIP_mfma_fill_16x16_f32"
+TensorIntrin.register(HIP_MFMA_fill_16x16_f32_INTRIN, *get_mma_fill_intrin("float32", 4))
 
-ROCM_MFMA_fill_16x16_i32_INTRIN = "ROCM_mfma_fill_16x16_i32"
-TensorIntrin.register(ROCM_MFMA_fill_16x16_i32_INTRIN, *get_mma_fill_intrin("int", 4))
+HIP_MFMA_fill_16x16_i32_INTRIN = "HIP_mfma_fill_16x16_i32"
+TensorIntrin.register(HIP_MFMA_fill_16x16_i32_INTRIN, *get_mma_fill_intrin("int", 4))
 
-ROCM_MFMA_LOAD_16x16_A_SHARED_s8_INTRIN = "rocm_mfma_load_16x16_a_shared_s8"
+HIP_MFMA_LOAD_16x16_A_SHARED_s8_INTRIN = "hip_mfma_load_16x16_a_shared_s8"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x16_A_SHARED_s8_INTRIN, *get_mfma_load_intrin(16, "int8", "shared")
+    HIP_MFMA_LOAD_16x16_A_SHARED_s8_INTRIN, *get_mfma_load_intrin(16, "int8", "shared")
 )
-ROCM_MFMA_LOAD_16x16_B_SHARED_s8_INTRIN = "rocm_mfma_load_b_16x16_shared_s8"
+HIP_MFMA_LOAD_16x16_B_SHARED_s8_INTRIN = "hip_mfma_load_b_16x16_shared_s8"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x16_B_SHARED_s8_INTRIN, *get_mfma_load_intrin(16, "int8", "shared", is_b=True)
+    HIP_MFMA_LOAD_16x16_B_SHARED_s8_INTRIN, *get_mfma_load_intrin(16, "int8", "shared", is_b=True)
 )
 
-ROCM_MFMA_LOAD_16x16_A_SHARED_f16_INTRIN = "rocm_mfma_load_16x16_a_shared_f16"
+HIP_MFMA_LOAD_16x16_A_SHARED_f16_INTRIN = "hip_mfma_load_16x16_a_shared_f16"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x16_A_SHARED_f16_INTRIN, *get_mfma_load_intrin(16, "float16", "shared")
+    HIP_MFMA_LOAD_16x16_A_SHARED_f16_INTRIN, *get_mfma_load_intrin(16, "float16", "shared")
 )
-ROCM_MFMA_LOAD_16x16_B_SHARED_f16_INTRIN = "rocm_mfma_load_b_16x16_shared_f16"
+HIP_MFMA_LOAD_16x16_B_SHARED_f16_INTRIN = "hip_mfma_load_b_16x16_shared_f16"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x16_B_SHARED_f16_INTRIN,
+    HIP_MFMA_LOAD_16x16_B_SHARED_f16_INTRIN,
     *get_mfma_load_intrin(16, "float16", "shared", is_b=True),
 )
 
-ROCM_MFMA_LOAD_16x4_A_SHARED_f32_INTRIN = "rocm_mfma_load_16x4_a_shared_f32"
+HIP_MFMA_LOAD_16x4_A_SHARED_f32_INTRIN = "hip_mfma_load_16x4_a_shared_f32"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x4_A_SHARED_f32_INTRIN, *get_mfma_load_intrin(4, "float32", "shared")
+    HIP_MFMA_LOAD_16x4_A_SHARED_f32_INTRIN, *get_mfma_load_intrin(4, "float32", "shared")
 )
-ROCM_MFMA_LOAD_16x4_B_SHARED_f32_INTRIN = "rocm_mfma_load_b_16x4_shared_f32"
+HIP_MFMA_LOAD_16x4_B_SHARED_f32_INTRIN = "hip_mfma_load_b_16x4_shared_f32"
 TensorIntrin.register(
-    ROCM_MFMA_LOAD_16x4_B_SHARED_f32_INTRIN,
-    *get_mfma_load_intrin(4, "float32", "shared", is_b=True),
-)
-
-
-ROCM_MFMA_f32f32f32_INTRIN = "rocm_mfma_f32f32f32"
-TensorIntrin.register(ROCM_MFMA_f32f32f32_INTRIN, *get_mfma_intrin(4, "float32", "float32"))
-
-ROCM_MFMA_f16f16f32_INTRIN = "rocm_mfma_f16f16f32"
-TensorIntrin.register(ROCM_MFMA_f16f16f32_INTRIN, *get_mfma_intrin(16, "float16", "float32"))
-
-ROCM_MFMA_s8s8s32_INTRIN = "rocm_mfma_s8s8s32"
-TensorIntrin.register(ROCM_MFMA_s8s8s32_INTRIN, *get_mfma_intrin(16, "int8", "int32"))
-
-ROCM_MFMA_STORE_16x16_s32_INTRIN = "rocm_mfma_store_16x16_s32"
-TensorIntrin.register(
-    ROCM_MFMA_STORE_16x16_s32_INTRIN, *get_mfma_store_intrin(4, "int32", "global")
+    HIP_MFMA_LOAD_16x4_B_SHARED_f32_INTRIN, *get_mfma_load_intrin(4, "float32", "shared", is_b=True)
 )
 
-ROCM_MFMA_STORE_16x16_f32_INTRIN = "rocm_mfma_store_16x16_f32"
+
+HIP_MFMA_f32f32f32_INTRIN = "hip_mfma_f32f32f32"
+TensorIntrin.register(HIP_MFMA_f32f32f32_INTRIN, *get_mfma_intrin(4, "float32", "float32"))
+
+HIP_MFMA_f16f16f32_INTRIN = "hip_mfma_f16f16f32"
+TensorIntrin.register(HIP_MFMA_f16f16f32_INTRIN, *get_mfma_intrin(16, "float16", "float32"))
+
+HIP_MFMA_s8s8s32_INTRIN = "hip_mfma_s8s8s32"
+TensorIntrin.register(HIP_MFMA_s8s8s32_INTRIN, *get_mfma_intrin(16, "int8", "int32"))
+
+HIP_MFMA_STORE_16x16_s32_INTRIN = "hip_mfma_store_16x16_s32"
+TensorIntrin.register(HIP_MFMA_STORE_16x16_s32_INTRIN, *get_mfma_store_intrin(4, "int32", "global"))
+
+HIP_MFMA_STORE_16x16_f32_INTRIN = "hip_mfma_store_16x16_f32"
 TensorIntrin.register(
-    ROCM_MFMA_STORE_16x16_f32_INTRIN, *get_mfma_store_intrin(4, "float32", "global")
+    HIP_MFMA_STORE_16x16_f32_INTRIN, *get_mfma_store_intrin(4, "float32", "global")
 )

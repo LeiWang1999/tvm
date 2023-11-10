@@ -289,7 +289,6 @@ class WarpAccessRewriter : protected StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const VarNode* op) override {
-    ICHECK(op != buffer_) << "Cannot access address of warp memory directly";
     return StmtExprMutator::VisitExpr_(op);
   }
 
@@ -329,8 +328,9 @@ class WarpAccessRewriter : protected StmtExprMutator {
     ICHECK_EQ(op->indices.size(), 1) << "Expected flat memory to use as warp memory.  "
                                      << "Has StorageFlatten (TE-based schedule) or "
                                      << "FlattenBuffer (TIR-based schedules) been run?";
-
+    
     auto [local_index, group] = SplitIndexByGroup(op->indices[0]);
+    
     // invariance: local index must do not contain warp id
     ICHECK(!UsesVar(local_index, [this](const VarNode* var) { return var == warp_index_.get(); }))
         << "LowerWarpMemory failed to rewrite load to shuffle for index " << op->indices[0]

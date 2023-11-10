@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "codegen_params.h"
 #include "literal/cuda_half_t.h"
 #include "ptx.h"
 
@@ -222,6 +223,23 @@ void CodeGenCUDA::VisitStmt_(const tir::ForNode* op) {
     stream << "#pragma unroll\n";
   }
   CodeGenC::VisitStmt_(op);
+}
+
+std::string CodeGenCUDA::CastFromTo(std::string value, DataType from, DataType target) {
+  if (from == target) return value;
+  std::ostringstream os;
+  os << "((";
+  this->PrintType(target, os);
+  os << ")";
+  if (from.is_float16() && (target.is_int() || target.is_uint()) && target.bits() == 8) {
+    os << "(";
+    if (target.is_uint()) {
+      os << "u";
+    }
+    os << "int)";
+  }
+  os << value << ")";
+  return os.str();
 }
 
 void CodeGenCUDA::BindThreadIndex(const IterVar& iv) {
@@ -1015,6 +1033,30 @@ void CodeGenCUDA::VisitStmt_(const AttrStmtNode* op) {
   }
   CodeGenC::VisitStmt_(op);
 }
+
+void CodeGenCUDA::VisitStmt_(const AllocateConstNode* op) {
+  std::string symbol_name = op->buffer_var->name_hint;
+  int64_t num_elements = 1;
+  const auto& data = op->data.value();
+
+  for (int64_t dim : data.Shape()) {
+    num_elements *= dim;
+  }
+
+  this->PrintIndent();
+  PrintType(data.DataType(), stream);
+  stream << ' ';
+
+  // Allocate the global static variable
+  stream << symbol_name << "[" << num_elements << "] = {\n";
+  NDArrayDataToC(data, 4, stream);
+  this->PrintIndent();
+  stream << "};\n";
+
+  var_idmap_[op->buffer_var.operator->()] = symbol_name;
+  this->PrintStmt(op->body);
+}
+
 
 void CodeGenCUDA::VisitStmt_(const AllocateNode* op) {
   ICHECK(!is_zero(op->condition));
