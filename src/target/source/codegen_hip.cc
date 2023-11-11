@@ -86,6 +86,10 @@ std::string CodeGenHIP::Finish() {
     decl_stream << " = __attribute__((__vector_size__(2 * sizeof(float16_t)))) float16_t;\n";
     decl_stream << "using float16x4\n";
     decl_stream << " = __attribute__((__vector_size__(4 * sizeof(float16_t)))) float16_t;\n";
+    decl_stream << "using float16x8\n";
+    decl_stream << " = __attribute__((__vector_size__(8 * sizeof(float16_t)))) float16_t;\n";
+    decl_stream << "using float16x16\n";
+    decl_stream << " = __attribute__((__vector_size__(16 * sizeof(float16_t)))) float16_t;\n";
   }
 
   if (need_math_constants_h_) {
@@ -921,6 +925,115 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
       os << "}\n";
     }
    
+  } else if (op->op.same_as(builtin::tvm_rdna_wmma())) {
+    // arg 0: prefix: {otype}_16x16x16{itype}
+    // arg 1: A layout: row/col
+    // arg 2: B layout: row/col
+    // arg 3: A precision: float16, float32, ...
+    // arg 4: B precision: float16, float32, ...
+    // arg 5: C precision: float32, float64, ...
+    // arg 6: A multiplicand
+    // arg 7: A multiplicand index
+    // arg 8: B multiplicand
+    // arg 9: B multiplicand index
+    // arg 10: C accumulator
+    // arg 11: C accumulator index
+
+    ICHECK(op->args.size() == 12U) << "Invalid number of arguments for tvm_mfma";
+    std::string prefix = Downcast<StringImm>(op->args[0])->value;
+    std::string A_layout = Downcast<StringImm>(op->args[1])->value;
+    std::string B_layout = Downcast<StringImm>(op->args[2])->value;
+    std::string A_dtype = Downcast<StringImm>(op->args[3])->value;
+    std::string B_dtype = Downcast<StringImm>(op->args[4])->value;
+    std::string C_dtype = Downcast<StringImm>(op->args[5])->value;
+    std::string a_ref = this->PrintExpr(op->args[6]);
+    std::string a_bias = this->PrintExpr(op->args[7]);
+    std::string b_ref = this->PrintExpr(op->args[8]);
+    std::string b_bias = this->PrintExpr(op->args[9]);
+    std::string c_ref = this->PrintExpr(op->args[10]);
+    std::string c_bias = this->PrintExpr(op->args[11]);
+    ICHECK(A_layout == "row" || B_layout == "row") << "Matrix core only support row major";
+    // map for dtype -> float32x4 -> float4
+    std::unordered_map<std::string, std::string> dtype_map = {
+        {"int8", "char"},
+        {"int32", "int"},
+        {"int32x4", "int32x4"},
+        {"float16", "half"},
+        {"float32", "float"},
+        {"float64", "double"},
+        {"float16x4", "float16x4"},
+        {"float16x8", "float16x16"},
+        {"float16x16", "float16x16"},
+        {"float32x4", "float32x4"},
+        {"float32x16", "float32x16"}
+    };
+    std::string call_mfma_code = R"({
+    *((({C_dytpe}*){c_ref}) + {c_bias}) = {mfma_buildin}(*((({A_dytpe}*){a_ref}) + {a_bias}),
+                  *((({B_dytpe}*){b_ref}) + {b_bias}),
+                  *((({C_dytpe}*){c_ref}) + {c_bias}), false);
+  })";
+    std::string mfma_buildin = "__builtin_amdgcn_wmma_" + prefix;
+    Replacer replacer;
+    replacer.register_rule("{mfma_buildin}", mfma_buildin);
+    replacer.register_rule("{A_dytpe}", dtype_map[A_dtype]);
+    replacer.register_rule("{B_dytpe}", dtype_map[B_dtype]);
+    replacer.register_rule("{C_dytpe}", dtype_map[C_dtype]);
+    replacer.register_rule("{a_ref}", a_ref);
+    replacer.register_rule("{a_bias}", a_bias);
+    replacer.register_rule("{b_ref}", b_ref);
+    replacer.register_rule("{b_bias}", b_bias);
+    replacer.register_rule("{c_ref}", c_ref);
+    replacer.register_rule("{c_bias}", c_bias);
+    os << replacer.rewrite(call_mfma_code);
+  } else if (op->op.same_as(builtin::tvm_rdna_wmma_store())) {
+    int m = Downcast<Integer>(op->args[0])->value;
+    int n = Downcast<Integer>(op->args[1])->value;
+    std::string dst = this->PrintExpr(op->args[2]);
+    std::string src = this->PrintExpr(op->args[3]);
+    std::string src_offset = this->PrintExpr(op->args[4]);
+    PrimExpr stride = op->args[5];
+
+    ICHECK((m == 16 && n == 16) || (m == 32 && n==32)) << "Only m == 16 && n == 16 or m == 32 && n == 32 case supported for now";
+
+    if(m == 16){
+      // Each thread in a warp holds a certain number of elements of an MMA output.
+      // For example, if we compute a 16x16 tile using MMA, each thread holds 8 elements
+      // in its registers. So conceptually, a warp memory is organized as a 32x8 block.
+      // A map from a 16x16 tile to a 32x8 block of memory is specified by the index map below.
+
+      // To store the 32x8 output back to a 16x16 tile in shared or global memory, we invert this
+      // map to determine the output location for each 8 element.
+      const auto* index_map_func =
+          runtime::Registry::Get("tir.index_map.shared_16x16_to_ldmatrix_32x8_layout");
+      ICHECK(index_map_func);
+
+      auto inverse_index_map =
+          IndexMap::FromFunc(2, *index_map_func).Inverse({Range(0, m), Range(0, n)});
+      auto indices_16x16 = inverse_index_map->final_indices;
+
+      // "//" and "%" in the index map are translated to FloorDiv/Mod, but the plain Div/Mod are
+      // fine. FloorDiv/Mod are supposed to be lowered before they reach codegen, so manually
+      // replace them to the plain ones here.
+      class LowerFloorDivMod : public ExprMutator {
+       public:
+        PrimExpr VisitExpr_(const FloorDivNode* op) {
+          return tir::Div(this->VisitExpr(op->a), this->VisitExpr(op->b));
+        }
+        PrimExpr VisitExpr_(const FloorModNode* op) {
+          return tir::Mod(this->VisitExpr(op->a), this->VisitExpr(op->b));
+        }
+      };
+
+      auto dst_ind = LowerFloorDivMod()(indices_16x16[0] * stride + indices_16x16[1]);
+
+      var_idmap_[inverse_index_map->initial_indices[0].get()] = "threadIdx.x";
+      var_idmap_[inverse_index_map->initial_indices[1].get()] = "local_id";
+
+      os << "for (int local_id = 0; local_id < 4; ++local_id) {\n";
+      os << dst << "[" + this->PrintExpr(dst_ind) + "]"
+         << " = " << src << "[" << src_offset << " + local_id];\n";
+      os << "}\n";
+    }
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
