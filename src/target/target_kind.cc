@@ -106,6 +106,24 @@ static int ExtractIntWithPrefix(const std::string& str, const std::string& prefi
 }
 
 /*!
+ * \brief Extract a string from the string with the given prefix.
+ * For example, when `str` is "sm_20" and `prefix` is "sm_".
+ * This function first checks if `str` starts with `prefix`,
+ * then return the integer 20 after the `prefix`
+ * \param str The string to be extracted
+ * \param prefix The prefix to be checked
+ * \return A string, the extracted string. "" if the check fails
+ */
+std::string ExtractStringWithPrefix(const std::string& str, const std::string& prefix) {
+  if (str.find(prefix) != 0) return "";
+  std::size_t pos = prefix.length();
+  while (pos < str.length() && (std::isdigit(str[pos]) || std::isalpha(str[pos]))) {
+    ++pos;
+  }
+  return str.substr(prefix.length(), pos - prefix.length());
+}
+
+/*!
  * \brief Using TVM DeviceAPI to detect the device flag
  * \param device The device to be detected
  * \param flag The device flag to be detected
@@ -200,27 +218,49 @@ TargetJSON UpdateNVPTXAttrs(TargetJSON target) {
 }
 
 /*!
+ * \brief Update the attributes in the HIP target.
+ * \param target The Target to update
+ * \return The updated attributes
+ */
+TargetJSON UpdateHIPAttrs(TargetJSON target) {
+  using tvm::runtime::Registry;
+  // Update -mcpu=gfx
+  std::string arch = "gfx900";
+  if (target.count("mcpu")) {
+    String mcpu = Downcast<String>(target.at("mcpu"));
+    arch = ExtractStringWithPrefix(mcpu, "gfx");
+    ICHECK(!arch.empty()) << "ValueError: ROCm target gets an invalid GFX version: -mcpu=" << mcpu;
+  } else {
+    TVMRetValue val;
+    if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
+      arch = (*f_get_rocm_arch)().operator std::string();
+    }
+    target.Set("mcpu", String(arch));
+  }
+  LOG(INFO) << "HIP target uses -mcpu=" << arch;
+  return target;
+}
+
+/*!
  * \brief Update the attributes in the LLVM ROCm target.
  * \param target The Target to update
  * \return The updated attributes
  */
 TargetJSON UpdateROCmAttrs(TargetJSON target) {
+  using tvm::runtime::Registry;
   CheckOrSetAttr(&target, "mtriple", "amdgcn-amd-amdhsa-hcc");
   // Update -mcpu=gfx
-  int arch;
+  std::string arch = "gfx900";
   if (target.count("mcpu")) {
     String mcpu = Downcast<String>(target.at("mcpu"));
-    arch = ExtractIntWithPrefix(mcpu, "gfx");
-    ICHECK(arch != -1) << "ValueError: ROCm target gets an invalid GFX version: -mcpu=" << mcpu;
+    arch = ExtractStringWithPrefix(mcpu, "gfx");
+    ICHECK(!arch.empty()) << "ValueError: ROCm target gets an invalid GFX version: -mcpu=" << mcpu;
   } else {
     TVMRetValue val;
-    if (!DetectDeviceFlag({kDLROCM, 0}, runtime::kGcnArch, &val)) {
-      LOG(WARNING) << "Unable to detect ROCm compute arch, default to \"-mcpu=gfx900\" instead";
-      arch = 900;
-    } else {
-      arch = val.operator int();
+    if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
+      arch = (*f_get_rocm_arch)().operator std::string();
     }
-    target.Set("mcpu", String("gfx") + std::to_string(arch));
+    target.Set("mcpu", String(arch));
   }
   // Update -mattr before ROCm 3.5:
   //   Before ROCm 3.5 we needed code object v2, starting
@@ -330,6 +370,17 @@ TVM_REGISTER_TARGET_KIND("nvptx", kDLCUDA)
     .add_attr_option<Integer>("thread_warp_size", Integer(32))
     .set_default_keys({"cuda", "gpu"})
     .set_target_parser(UpdateNVPTXAttrs);
+
+TVM_REGISTER_TARGET_KIND("hip", kDLROCM)
+    .add_attr_option<String>("mcpu")
+    // TODO(lei/masihi): Support querying from a target device
+    // On RDNA cards, thread_warp_size should be 32
+    .add_attr_option<Integer>("max_num_threads", Integer(256))
+    .add_attr_option<Integer>("max_threads_per_block", Integer(256))
+    .add_attr_option<Integer>("max_shared_memory_per_block", Integer(65536))
+    .add_attr_option<Integer>("thread_warp_size", Integer(64))
+    .set_default_keys({"rocm", "gpu"})
+    .set_target_parser(UpdateHIPAttrs);
 
 TVM_REGISTER_TARGET_KIND("rocm", kDLROCM)
     .add_attr_option<String>("mcpu")

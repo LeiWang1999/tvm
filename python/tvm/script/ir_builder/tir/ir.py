@@ -33,7 +33,7 @@ from tvm.target import Target
 
 # pylint: disable=unused-import
 from tvm.target.codegen import llvm_lookup_intrinsic_id
-from tvm.tir import Buffer, BufferRegion, PrimExpr
+from tvm.tir import Buffer, BufferRegion, IndexMap, PrimExpr
 from tvm.tir import op as _tir_op
 from tvm.tir import type_annotation
 
@@ -1442,6 +1442,15 @@ def comm_reducer(combiner: Callable, identity: List[PrimExpr]) -> CommReducer:
     return CommReducer(args[: num_args // 2], args[num_args // 2 :], res, identity)
 
 
+def index_map(
+    mapping: Callable,
+    *,
+    inverse_index_map: Optional[Callable] = None,
+) -> IndexMap:
+    """Create a TIR Index mapping"""
+    return IndexMap.from_func(mapping, inverse_index_map=inverse_index_map)
+
+
 def target(target_config: Union[Dict, str]) -> Target:
     """
     Create a target
@@ -1582,6 +1591,10 @@ ptx_wait_group = _op_wrapper(_tir_op.ptx_wait_group)
 ptx_commit_group = _op_wrapper(_tir_op.ptx_commit_group)
 mma_store = _dtype_forward(_tir_op.mma_store)
 mma_fill = _dtype_forward(_tir_op.mma_fill)
+cutlass_init_fragment = _dtype_forward(_tir_op.cutlass_init_fragment)
+cutlass_warp_mma = _dtype_forward(_tir_op.cutlass_warp_mma)
+tvm_mfma = _dtype_forward(_tir_op.tvm_mfma)
+tvm_mfma_store = _dtype_forward(_tir_op.tvm_mfma_store)
 vectorlow = _dtype_forward(_tir_op.vectorlow)
 vectorhigh = _dtype_forward(_tir_op.vectorhigh)
 vectorcombine = _dtype_forward(_tir_op.vectorcombine)
@@ -1668,6 +1681,7 @@ __all__ += [
     "max",
     "iter_var",
     "comm_reducer",
+    "index_map",
     "target",
     "buffer_var",
     "abs",
@@ -1763,6 +1777,10 @@ __all__ += [
     "ptx_commit_group",
     "mma_store",
     "mma_fill",
+    "cutlass_init_fragment",
+    "cutlass_warp_mma",
+    "tvm_mfma",
+    "tvm_mfma_store",
     "vectorlow",
     "vectorhigh",
     "vectorcombine",

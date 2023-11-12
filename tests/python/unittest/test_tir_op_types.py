@@ -244,6 +244,28 @@ def test_op_ptx_wait_group():
     assert expr.op.name == "tir.ptx_wait_group"
 
 
+def test_tir_op_tvm_mfma():
+    buffer_a = tir.decl_buffer([4], "float16", scope="local")
+    buffer_b = tir.decl_buffer([4], "float16", scope="local")
+    buffer_c = tir.decl_buffer([4], "float32", scope="local")
+    expr = tir.tvm_mfma(
+        "float32x4",
+        "16x16x16",
+        "row",
+        "row",
+        "float16x4",
+        "float16x4",
+        "float32x4",
+        buffer_a.data,
+        0,
+        buffer_b.data,
+        0,
+        buffer_c.data,
+        0,
+    )
+    assert expr.op.name == "tir.tvm_mfma"
+
+
 def test_tir_op_vectorlow():
     buffer = tir.decl_buffer((4, 4), "int8", offset_factor=1)
     vec = buffer.vload([0, 0], dtype="int8x16")
@@ -277,6 +299,19 @@ def test_tir_op_shift_right():
     y = tir.Var("x", dtype="int32")
     expr = tir.shift_right(x, y)
     assert expr.op.name == "tir.shift_right"
+
+
+def test_tir_op_bitwise():
+    x = tir.Var("x", dtype="int32")
+    y = tir.Var("y", dtype="int32")
+    expr = tir.bitwise_and(x, y)
+    assert expr.op.name == "tir.bitwise_and"
+    expr = tir.bitwise_or(x, y)
+    assert expr.op.name == "tir.bitwise_or"
+    expr = tir.bitwise_not(x)
+    assert expr.op.name == "tir.bitwise_not"
+    expr = tir.bitwise_xor(x, y)
+    assert expr.op.name == "tir.bitwise_xor"
 
 
 def test_tir_op_TVMBackendAllocWorkspace():

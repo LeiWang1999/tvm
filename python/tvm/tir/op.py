@@ -1161,6 +1161,48 @@ def mma_fill(dtype, local_size, local_ptr, offset):
     )
 
 
+def cutlass_init_fragment(dtype, pointer, cls_name, warp_idx_m, warp_idx_n):
+    """TVM intrinsic for zero-initalizing an MMA accumulation registor
+
+    Parameters
+    ----------
+    dtype : str
+        The data type of the result.
+
+    Returns
+    -------
+    call : PrimExpr
+        The call expression.
+    """
+    return call_intrin(
+        dtype,
+        "tir.cutlass_init_fragment",
+        pointer,
+        cls_name,
+        warp_idx_m,
+        warp_idx_n,
+    )
+
+def cutlass_warp_mma(dtype, *args):
+    """TVM intrinsic for zero-initalizing an MMA accumulation registor
+
+    Parameters
+    ----------
+    dtype : str
+        The data type of the result.
+
+    Returns
+    -------
+    call : PrimExpr
+        The call expression.
+    """
+    return call_intrin(
+        dtype,
+        "tir.cutlass_warp_mma",
+        *args
+    )
+
+
 def ptx_ldmatrix(dtype, trans, num, type, local_ptr, local_offset, smem_ptr, smem_offset):
     """TVM intrinsic for ptx load matrix from shared memory
     https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-ldmatrix
@@ -1270,6 +1312,131 @@ def ptx_wait_group(num):
         The call expression.
     """
     return call_intrin("", "tir.ptx_wait_group", num)
+
+
+def tvm_mfma(
+    dtype,
+    shape,
+    A_layout,
+    B_layout,
+    A_dtype,
+    B_dtype,
+    C_dtype,
+    multiplicand_a,
+    a_index,
+    multiplicand_b,
+    b_index,
+    accumulator,
+    c_index,
+):
+    """TVM intrinsic for amd matrix core mfma instructions
+    https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-for-mma
+
+    Parameters
+    ----------
+    dtype : str
+        The data type of the result.
+
+    shape : str
+        The shape of mma fragment.
+
+    A_layout : Literal["row", "col"]
+        The layout of multiplicand fragment A.
+
+    B_layout : Literal["row", "col"]
+        The layout of multiplicand fragment B.
+
+    A_dtype : str
+        The data type of multiplicand fragment A.
+
+    B_dtype : str
+        The data type of multiplicand fragment B.
+
+    C_dtype : str
+        The data type of accumulator fragment C.
+
+    multiplicand_a : Var
+        The multiplicand fragment A variable.
+
+    a_index : Expr
+        The index of multiplicand fragment A.
+
+    multiplicand_b : Var
+        The multiplicand fragment B variable.
+
+    b_index : Expr
+        The index of multiplicand fragment A.
+
+    accumulator : Var
+        The accumulator fragment C variable.
+
+    c_index : Expr
+        The index of accumulator fragment C.
+
+    Returns
+    -------
+    call : PrimExpr
+        The call expression.
+    """
+    return call_intrin(
+        dtype,
+        "tir.tvm_mfma",
+        shape,
+        A_layout,
+        B_layout,
+        A_dtype,
+        B_dtype,
+        C_dtype,
+        multiplicand_a,
+        a_index,
+        multiplicand_b,
+        b_index,
+        accumulator,
+        c_index,
+    )
+
+
+def tvm_mfma_store(dtype, m, n, dst_ptr, src_ptr, src_offset, dst_stride):
+    """TVM intrinsic for storing the result of PTX MMA into a destination pointer
+
+    Parameters
+    ----------
+    dtype : str
+        The data type of the result.
+
+    m : IntImm
+        The shape of mma fragment.
+
+    n : IntImm
+        The shape of mma fragment.
+
+    dst_ptr : Var
+        The destination pointer variable.
+
+    src_ptr : Var
+        The source pointer variable.
+
+    src_offset : Expr
+        The source offset.
+
+    dst_stride : Var
+        The destination stride.
+
+    Returns
+    -------
+    call : PrimExpr
+        The call expression.
+    """
+    return call_intrin(
+        dtype,
+        "tir.tvm_mfma_store",
+        m,
+        n,
+        dst_ptr,
+        src_ptr,
+        src_offset,
+        dst_stride,
+    )
 
 
 def vectorlow(dtype, vec):
@@ -1997,6 +2164,91 @@ def abs(x, span=None):
     return _ffi_api.abs(x, span)  # type: ignore
 
 
+def bitwise_and(x, y, span=None):
+    """Take bitwise and of two values
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Left operand
+
+    y : PrimExpr
+        Right operand
+
+    span : Optional[Span]
+        The location of this operator in the source code.
+
+    Returns
+    -------
+    res : PrimExpr
+        The result.
+    """
+    return _ffi_api.bitwise_and(x, y, span)
+
+
+def bitwise_not(x, span=None):
+    """Take bitwise not of input value
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Input operand
+
+    span : Optional[Span]
+        The location of this operator in the source code.
+
+    Returns
+    -------
+    res : PrimExpr
+        The result.
+    """
+    return _ffi_api.bitwise_not(x, span)
+
+
+def bitwise_or(x, y, span=None):
+    """Take bitwise or of two values
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Left operand
+
+    y : PrimExpr
+        Right operand
+
+    span : Optional[Span]
+        The location of this operator in the source code.
+
+    Returns
+    -------
+    res : PrimExpr
+        The result.
+    """
+    return _ffi_api.bitwise_or(x, y, span)
+
+
+def bitwise_xor(x, y, span=None):
+    """Take bitwise xor of two values
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Left operand
+
+    y : PrimExpr
+        Right operand
+
+    span : Optional[Span]
+        The location of this operator in the source code.
+
+    Returns
+    -------
+    res : PrimExpr
+        The result.
+    """
+    return _ffi_api.bitwise_xor(x, y, span)
+
+
 def round(x, span=None):
     """Round elements of the array to the nearest integer.
 
@@ -2215,6 +2467,28 @@ def isinf(x, span=None):
 
 
 def power(x, y, span=None):
+    """x power y
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Input argument.
+
+    y : PrimExpr
+        The exponent
+
+    span : Optional[Span]
+        The location of this operator in the source code.
+
+    Returns
+    -------
+    z : PrimExpr
+        The result.
+    """
+    return _ffi_api._OpPow(convert(x), convert(y), span)  # type: ignore
+
+
+def pow(x, y, span=None):
     """x power y
 
     Parameters
