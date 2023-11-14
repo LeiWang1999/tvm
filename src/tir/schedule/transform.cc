@@ -43,6 +43,12 @@ Buffer WithScope(const Buffer& buffer, const String& scope) {
   return Buffer(new_buffer);
 }
 
+Buffer WithShape(const Buffer& buffer, const Array<PrimExpr>& shape) {
+  ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*buffer.get());
+  new_buffer->shape = shape;
+  return Buffer(new_buffer);
+}
+
 Array<BufferRegion> ReplaceBuffer(Array<BufferRegion> regions, const Buffer& source,
                                   const Buffer& target) {
   regions.MutateByApply([&source, &target](BufferRegion region) -> BufferRegion {

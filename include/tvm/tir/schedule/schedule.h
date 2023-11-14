@@ -390,8 +390,8 @@ class ScheduleNode : public runtime::Object {
    * \return The cache stage block.
    */
   virtual BlockRV CacheRead(const BlockRV& block_rv, int read_buffer_index,
-                            const String& storage_scope,
-                            const Array<BlockRV> consumer_blocks = {}) = 0;
+                            const String& storage_scope, const Array<BlockRV> consumer_blocks = {},
+                            const Array<PrimExpr> alloc_shape = {}) = 0;
   /*!
    * \brief Create a block that writes a buffer region into a write cache. It requires:
    * 1) There is only one block who writes the target buffer.
@@ -403,8 +403,8 @@ class ScheduleNode : public runtime::Object {
    * \return The cache stage block.
    */
   virtual BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
-                             const String& storage_scope,
-                             const Array<BlockRV> consumer_blocks = {}) = 0;
+                             const String& storage_scope, const Array<BlockRV> consumer_blocks = {},
+                             const Array<PrimExpr> alloc_shape = {}) = 0;
   /*!
    * \brief Create 2 blocks that read&write a buffer region into a read/write cache.
    * It requires the the target block both read & write the target buffer.

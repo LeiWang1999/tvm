@@ -120,7 +120,7 @@ std::string ExtractStringWithPrefix(const std::string& str, const std::string& p
   while (pos < str.length() && (std::isdigit(str[pos]) || std::isalpha(str[pos]))) {
     ++pos;
   }
-  return str.substr(prefix.length(), pos - prefix.length());
+  return str.substr(0, pos);
 }
 
 /*!
@@ -235,8 +235,8 @@ TargetJSON UpdateHIPAttrs(TargetJSON target) {
     if (const auto* f_get_rocm_arch = Registry::Get("tvm_callback_rocm_get_arch")) {
       arch = (*f_get_rocm_arch)().operator std::string();
     }
-    target.Set("mcpu", String(arch));
   }
+  target.Set("mcpu", String(arch));
   LOG(INFO) << "HIP target uses -mcpu=" << arch;
   return target;
 }

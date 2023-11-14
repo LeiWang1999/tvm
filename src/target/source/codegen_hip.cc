@@ -1004,11 +1004,11 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
       // To store the 32x8 output back to a 16x16 tile in shared or global memory, we invert this
       // map to determine the output location for each 8 element.
       const auto* index_map_func =
-          runtime::Registry::Get("tir.index_map.shared_16x16_to_ldmatrix_32x8_layout");
+          runtime::Registry::Get("tir.index_map.shared_16x16_to_ldmatrix_16x16_layout");
       ICHECK(index_map_func);
 
       auto inverse_index_map =
-          IndexMap::FromFunc(2, *index_map_func).Inverse({Range(0, m), Range(0, n)});
+          IndexMap::FromFunc(2, *index_map_func);
       auto indices_16x16 = inverse_index_map->final_indices;
 
       // "//" and "%" in the index map are translated to FloorDiv/Mod, but the plain Div/Mod are
@@ -1029,9 +1029,9 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
       var_idmap_[inverse_index_map->initial_indices[0].get()] = "threadIdx.x";
       var_idmap_[inverse_index_map->initial_indices[1].get()] = "local_id";
 
-      os << "for (int local_id = 0; local_id < 4; ++local_id) {\n";
+      os << "for (int local_id = 0; local_id < 8; ++local_id) {\n";
       os << dst << "[" + this->PrintExpr(dst_ind) + "]"
-         << " = " << src << "[" << src_offset << " + local_id];\n";
+         << " = " << src << "[" << src_offset << " + local_id * 2];\n";
       os << "}\n";
     }
   } else {

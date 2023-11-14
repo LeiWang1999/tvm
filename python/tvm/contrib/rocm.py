@@ -225,7 +225,7 @@ def have_matrixcore(compute_version=None, target=None):
 
 @tvm._ffi.register_func("tvm_callback_rocm_get_arch")
 def get_rocm_arch(rocm_path="/opt/rocm"):
-    gpu_arch = "gfx900"
+    gpu_arch = "gfx1100"
     # check if rocm is installed
     if not os.path.exists(rocm_path):
         print("ROCm not detected, using default gfx900")

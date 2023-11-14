@@ -1017,6 +1017,7 @@ class Schedule(Object):
         read_buffer_index: Union[int, str, Buffer],
         storage_scope: str,
         consumer_blocks: Optional[List[Union[BlockRV, str]]] = None,
+        alloc_shape:Optional[List[int]] = None,
     ) -> BlockRV:
         """Create a block that reads a buffer region into a read cache. It requires:
 
@@ -1040,6 +1041,10 @@ class Schedule(Object):
         consumer_blocks: Optional[List[Union[BlockRV, str]]]
             An optional list of consumers that should read from the cache. If not specified,
             all consumers will use the cache.
+
+        alloc_shape: List[int]
+            An optional list of shape, if specified, the shape of the allocated buffer will be customized.
+            If not specified, the shape will be the same as the original buffer.
 
         Returns
         -------
@@ -1092,6 +1097,9 @@ class Schedule(Object):
         if consumer_blocks is None:
             consumer_blocks = []
 
+        if alloc_shape is None:
+            alloc_shape = []
+
         # Convert any string block names into Block RVs.
         consumer_blocks = [self._normalize_block_arg(b) for b in consumer_blocks]
         block = self._normalize_block_arg(block)
@@ -1101,7 +1109,7 @@ class Schedule(Object):
                 block, read_buffer_index, required_buffer_type="read"
             )
         return _ffi_api.ScheduleCacheRead(  # type: ignore # pylint: disable=no-member
-            self, block, read_buffer_index, storage_scope, consumer_blocks
+            self, block, read_buffer_index, storage_scope, consumer_blocks, alloc_shape
         )
 
     @type_checked
@@ -1110,7 +1118,8 @@ class Schedule(Object):
         block: Union[BlockRV, str],
         write_buffer_index: Union[int, str, Buffer],
         storage_scope: str,
-        consumer_blocks=None,
+        consumer_blocks: Optional[List[Union[BlockRV, str]]] = None,
+        alloc_shape:Optional[List[int]] = None,
     ) -> BlockRV:
         """Create a block that reads a buffer region into a write cache. It requires:
 
@@ -1135,6 +1144,10 @@ class Schedule(Object):
             An optional list of consumers that should read directly from the cache.
             If not specified, all consumers will read from the original buffer.
 
+        alloc_shape: List[int]
+            An optional list of shape, if specified, the shape of the allocated buffer will be customized.
+            If not specified, the shape will be the same as the original buffer.
+        
         Returns
         -------
         cached_block : BlockRV
@@ -1185,6 +1198,9 @@ class Schedule(Object):
         """
         if consumer_blocks is None:
             consumer_blocks = []
+        
+        if alloc_shape is None:
+            alloc_shape = []
 
         # Convert any string block names into Block RVs.
         consumer_blocks = [self._normalize_block_arg(b) for b in consumer_blocks]
@@ -1195,7 +1211,7 @@ class Schedule(Object):
                 block, write_buffer_index, required_buffer_type="write"
             )
         return _ffi_api.ScheduleCacheWrite(  # type: ignore # pylint: disable=no-member
-            self, block, write_buffer_index, storage_scope, consumer_blocks
+            self, block, write_buffer_index, storage_scope, consumer_blocks, alloc_shape
         )
 
     @type_checked
