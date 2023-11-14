@@ -54,6 +54,14 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
 Buffer WithScope(const Buffer& buffer, const String& scope);
 
 /*!
+ * \brief Create a new buffer by changing the shape.
+ * \param buffer The given buffer.
+ * \param shape The target shape.
+ * \return The new buffer with target shape.
+ */
+Buffer WithShape(const Buffer& buffer, const Array<PrimExpr>& shape);
+
+/*!
  * \brief Replaces the buffer within the specific sequence of regions
  * \param regions The regions whose buffers are to be replaced
  * \param source The buffer to be replaced

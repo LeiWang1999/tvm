@@ -113,9 +113,11 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Unroll(const LoopRV& loop_rv) override;
   /******** Schedule: Insert cache stages ********/
   BlockRV CacheRead(const BlockRV& block_rv, int read_buffer_index, const String& storage_scope,
-                    const Array<BlockRV> consumer_blocks = {}) override;
+                    const Array<BlockRV> consumer_blocks = {},
+                    const Array<PrimExpr> alloc_shape = {}) override;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index, const String& storage_scope,
-                     const Array<BlockRV> consumer_blocks = {}) override;
+                     const Array<BlockRV> consumer_blocks = {},
+                     const Array<PrimExpr> alloc_shape = {}) override;
   Array<BlockRV> CacheInplace(const BlockRV& block_rv, int read_buffer_index,
                               const String& storage_scope) override;
   Array<BlockRV> CacheIndex(const BlockRV& block_rv, int write_buffer_index) override;

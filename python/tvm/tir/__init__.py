@@ -62,7 +62,7 @@ from .op import (
 )
 from .op import ptx_mma, ptx_mma_sp, mma_store, mma_fill
 from .op import ptx_ldmatrix, ptx_cp_async, ptx_commit_group, ptx_wait_group
-from .op import tvm_mfma, tvm_mfma_store
+from .op import tvm_mfma, tvm_mfma_store, tvm_rdna_wmma, tvm_rdna_wmma_store
 from .op import cutlass_init_fragment, cutlass_warp_mma
 from .op import vectorlow, vectorhigh, vectorcombine
 from .op import infinity, reinterpret

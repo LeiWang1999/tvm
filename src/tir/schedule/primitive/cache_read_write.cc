@@ -1146,7 +1146,8 @@ The region cover property require to hold for every of its child blocks
 /******** Implementation ********/
 
 StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
-                   const String& storage_scope, const Array<StmtSRef> consumer_blocks) {
+                   const String& storage_scope, const Array<StmtSRef> consumer_blocks,
+                   const Array<PrimExpr> alloc_shape) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1170,11 +1171,13 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buff
   CheckRegionCover(self, scope_sref, read_buffer);
   const BlockNode* scope_block = TVM_SREF_TO_BLOCK(scope_sref);
 
+  // Check required buffer allocation for read_buffer
+  auto write_buffer_shape = alloc_shape.size() == 0 ? read_buffer->shape : alloc_shape;
   // Step 2. Create CacheStageInfo
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create the corresponding buffer to be written, i.e. result of cache_read
-  info.write_buffer = WithScope(read_buffer, storage_scope);
+  info.write_buffer = WithShape(WithScope(read_buffer, storage_scope), write_buffer_shape);
   // Create the corresponding buffer allocation
   info.alloc = info.write_buffer;
 
@@ -1227,7 +1230,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buff
 }
 
 StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
-                    const String& storage_scope, const Array<StmtSRef> consumer_blocks) {
+                    const String& storage_scope, const Array<StmtSRef> consumer_blocks, const Array<PrimExpr> alloc_shape) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1247,10 +1250,13 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   Buffer write_buffer =
       GetNthAccessBuffer(self, GetRef<Block>(block), write_buffer_index, BufferIndexType::kWrite);
   StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
-
+  
+  // Check required buffer allocation for read_buffer
+  auto read_buffer_shape = alloc_shape.size() == 0 ? write_buffer->shape : alloc_shape;
   // Step 2. Creating CacheStageInfo
   CacheStageInfo info;
-  info.read_buffer = WithScope(write_buffer, storage_scope);
+  info.read_buffer = WithShape(WithScope(write_buffer, storage_scope), read_buffer_shape);
+
   // Create the corresponding buffer to be written, i.e. result of cache_write
   info.write_buffer = write_buffer;
   // Create the corresponding buffer allocation
@@ -1280,7 +1286,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
                                            /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref,
                                                /*writer_block_sref=*/block_sref, /*info=*/&info);
-
+  cache_write_stage->alloc_buffers;
   // Step 6. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
   StmtSRef result_block_sref = self->stmt2ref.at(cache_write_stage.get());
