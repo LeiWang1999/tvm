@@ -20,9 +20,9 @@
 /*!
  * \file Use external rocblas library call.
  */
-#include "rocblas.h"
-
 #include <dmlc/thread_local.h>
+#include <hip/hip_fp16.h>
+#include <rocblas/rocblas.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/runtime/logging.h>
 #include <tvm/runtime/registry.h>
@@ -78,27 +78,53 @@ TVM_REGISTER_GLOBAL("tvm.contrib.rocblas.matmul").set_body([](TVMArgs args, TVMR
   ICHECK(C->strides == nullptr);
   ICHECK(B->strides == nullptr);
   ICHECK(A->strides == nullptr);
-  ICHECK(TypeMatch(A->dtype, kDLFloat, 32));
-  ICHECK(TypeMatch(B->dtype, kDLFloat, 32));
-  ICHECK(TypeMatch(C->dtype, kDLFloat, 32));
+  bool is_a_float32 = TypeMatch(A->dtype, kDLFloat, 32);
+  bool is_c_float32 = TypeMatch(C->dtype, kDLFloat, 32);
+  if (is_a_float32){
+    float alpha = 1.0;
+    float beta = 0.0;
+    float* A_ptr = reinterpret_cast<float*>(static_cast<char*>(A->data) + A->byte_offset);
+    float* B_ptr = reinterpret_cast<float*>(static_cast<char*>(B->data) + B->byte_offset);
+    float* C_ptr = reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset);
 
-  float alpha = 1.0;
-  float beta = 0.0;
-  float* A_ptr = reinterpret_cast<float*>(static_cast<char*>(A->data) + A->byte_offset);
-  float* B_ptr = reinterpret_cast<float*>(static_cast<char*>(B->data) + B->byte_offset);
-  float* C_ptr = reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset);
+    rocblas_operation roc_trans_A = transa ? rocblas_operation_transpose : rocblas_operation_none;
+    rocblas_operation roc_trans_B = transb ? rocblas_operation_transpose : rocblas_operation_none;
+    size_t N = transb ? B->shape[0] : B->shape[1];
+    size_t M = transa ? A->shape[1] : A->shape[0];
+    size_t K = transb ? B->shape[1] : B->shape[0];
+    size_t lda = transa ? M : K;
+    size_t ldb = transb ? K : N;
+    size_t ldc = N;
 
-  rocblas_operation roc_trans_A = transa ? rocblas_operation_transpose : rocblas_operation_none;
-  rocblas_operation roc_trans_B = transb ? rocblas_operation_transpose : rocblas_operation_none;
-  size_t N = transb ? B->shape[0] : B->shape[1];
-  size_t M = transa ? A->shape[1] : A->shape[0];
-  size_t K = transb ? B->shape[1] : B->shape[0];
-  size_t lda = transa ? M : K;
-  size_t ldb = transb ? K : N;
-  size_t ldc = N;
+    CHECK_ROCBLAS_ERROR(rocblas_sgemm(RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A,
+                                      N, M, K, &alpha, B_ptr, ldb, A_ptr, lda, &beta, C_ptr, ldc));
+  }else{
+    ICHECK(TypeMatch(A->dtype, kDLFloat, 16));
+    auto algo = rocblas_gemm_algo_standard;
+    auto aType = rocblas_datatype_f16_r;
+    auto bType = rocblas_datatype_f16_r;
+    auto cType = is_c_float32? rocblas_datatype_f32_r : rocblas_datatype_f16_r;
+    auto computeType = rocblas_datatype_f32_r;
 
-  CHECK_ROCBLAS_ERROR(rocblas_sgemm(RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A, N,
-                                    M, K, &alpha, B_ptr, ldb, A_ptr, lda, &beta, C_ptr, ldc));
+    float alpha = 1.0;
+    float beta = 0.0;
+    half* A_ptr = reinterpret_cast<half*>(static_cast<char*>(A->data) + A->byte_offset);
+    half* B_ptr = reinterpret_cast<half*>(static_cast<char*>(B->data) + B->byte_offset);
+    half* C_ptr = reinterpret_cast<half*>(static_cast<char*>(C->data) + C->byte_offset);
+
+    rocblas_operation roc_trans_A = transa ? rocblas_operation_transpose : rocblas_operation_none;
+    rocblas_operation roc_trans_B = transb ? rocblas_operation_transpose : rocblas_operation_none;
+    size_t N = transb ? B->shape[0] : B->shape[1];
+    size_t M = transa ? A->shape[1] : A->shape[0];
+    size_t K = transb ? B->shape[1] : B->shape[0];
+    size_t lda = transa ? M : K;
+    size_t ldb = transb ? K : N;
+    CHECK_ROCBLAS_ERROR(rocblas_gemm_ex(RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A,
+                                        M, N, K, &alpha, B_ptr, bType, ldb, A_ptr, aType, lda,
+                                        &beta, C_ptr, cType, M, C_ptr, cType, M, computeType,
+                                        algo, 0, 0));
+  }
+
 });
 
 TVM_REGISTER_GLOBAL("tvm.contrib.rocblas.batch_matmul")

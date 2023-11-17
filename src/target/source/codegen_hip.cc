@@ -81,6 +81,16 @@ std::string CodeGenHIP::Finish() {
 
   if (enable_fp16_) {
     decl_stream << "#include <hip/hip_fp16.h>\n";
+
+    decl_stream << R"(
+// Pack two half values.
+static inline __device__ __host__ unsigned
+__pack_half2(const half x, const half y) {
+  unsigned v0 = *((unsigned short *)&x);
+  unsigned v1 = *((unsigned short *)&y);
+  return (v1 << 16) | v0;
+})";
+
     decl_stream << "using float16_t = _Float16;\n";
     decl_stream << "using float16x2\n";
     decl_stream << " = __attribute__((__vector_size__(2 * sizeof(float16_t)))) float16_t;\n";
@@ -106,6 +116,9 @@ std::string CodeGenHIP::Finish() {
   decl_stream << "using float32x16\n";
   decl_stream << " = __attribute__((__vector_size__(16 * sizeof(float)))) float;\n";
 
+  decl_stream << "#define max(a, b) (((a) > (b)) ? (a) : (b))\n";
+  decl_stream << "#define min(a, b) (((a) < (b)) ? (a) : (b))\n";
+  
   return CodeGenC::Finish();
 }
 

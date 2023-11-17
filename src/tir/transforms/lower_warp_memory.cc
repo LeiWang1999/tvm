@@ -140,15 +140,15 @@ class WarpStoreCoeffFinder : private StmtExprVisitor {
                                      << "FlattenBuffer (TIR-based schedules) been run?";
 
     PrimExpr index = op->indices[0];
-    if (op->value.dtype().lanes() != 1) {
-      arith::PVar<PrimExpr> base;
-      ICHECK(arith::ramp(base, 1, op->value.dtype().lanes()).Match(index))
-          << "LowerWarpMemory failed due to store index=" << index
-          << ", can only handle continuous store";
-      UpdatePattern(base.Eval());
+    // if (op->value.dtype().lanes() != 1) {
+    //   arith::PVar<PrimExpr> base;
+    //   ICHECK(arith::ramp(base, 1, op->value.dtype().lanes()).Match(index))
+    //       << "LowerWarpMemory failed due to store index=" << index
+    //       << ", can only handle continuous store";
+    //   UpdatePattern(base.Eval());
 
-      index = base.Eval();
-    }
+    //   index = base.Eval();
+    // }
     UpdatePattern(index);
   }
 
