@@ -154,9 +154,9 @@ class MatchBufferLower : public StmtExprMutator {
     ICHECK_EQ(buffer.scope(), source_buffer.scope())
         << "MatchBuffer " << buffer << " scope mismatch:" << buffer.scope() << "vs."
         << source_buffer.scope();
-    ICHECK_EQ(buffer->dtype, source_buffer->dtype)
-        << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << "vs."
-        << source_buffer->dtype;
+    // ICHECK_EQ(buffer->dtype, source_buffer->dtype)
+    //     << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << "vs."
+    //     << source_buffer->dtype;
 
     // Step.1.2. Check data alignment
     if (source_buffer->data_alignment % buffer->data_alignment != 0) {

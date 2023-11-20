@@ -41,7 +41,7 @@ def shared_32x16_to_ldmatrix_32x16_layout(i, j):
     return thread_id, 8 * (j // 8) + (i // 16) * 4 + i % 4
 
 
-@register_func("tir.index_map.shared_16x16_to_ldmatrix_32x8_layout")
+@register_func("tir.index_map.shared_16x16_to_ldmatrix_32x8_layout", override=True)
 def index_map_shared_16x16_to_ldmatrix_32x8_layout(ind):
     i, j = ind[0], ind[1]
     thread_id, local_id = shared_16x16_to_ldmatrix_32x8_layout(i, j)
@@ -612,7 +612,7 @@ def get_wmma_fill_intrin(
                     n_dim,
                     k_dim,
                     get_wmma_fragment_index(C, d1, m_dim, n_dim),
-                    T.float32(0),
+                    zero,
                     dtype="handle",
                 )
             )

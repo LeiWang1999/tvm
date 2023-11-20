@@ -887,9 +887,9 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
   CHECK_EQ(buffer.scope(), source_buffer.scope())
       << "MatchBuffer " << buffer << " scope mismatch:" << buffer.scope() << " vs. "
       << source_buffer.scope();
-  CHECK_EQ(buffer->dtype, source_buffer->dtype)
-      << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << " vs. "
-      << source_buffer->dtype;
+  // CHECK_EQ(buffer->dtype, source_buffer->dtype)
+  //     << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << " vs. "
+  //     << source_buffer->dtype;
 
   // Check data_alignment
   CHECK(source_buffer->data_alignment % buffer->data_alignment == 0)

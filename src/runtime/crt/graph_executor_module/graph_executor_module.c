@@ -40,6 +40,7 @@ static GraphExecutorModule graph_executor;
 
 int32_t TVMGraphExecutorModule_Create(TVMValue* args, int* tcodes, int nargs, TVMValue* ret_values,
                                       int* ret_tcodes, void* resource_handle) {
+  printf("TVMGraphExecutorModule_Create\n");
   if (graph_executor.executor != NULL) {
     return kTvmErrorExecutorModuleAlreadyCreated;
   }

@@ -20,6 +20,7 @@
 /*!
  * \file Use external miopen utils function
  */
+#include <hip/hip_fp16.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/registry.h>
@@ -99,7 +100,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.miopen.conv2d.setup").set_body([](TVMArgs args,
       entry_ptr->handle, entry_ptr->conv_entry.filter_desc, entry_ptr->conv_entry.input_desc,
       entry_ptr->conv_entry.conv_desc, entry_ptr->conv_entry.output_desc, &workspace_size));
   entry_ptr->conv_entry.UpdateWorkspace(workspace_size);
-
+LOG(INFO) << "MIOpen Conv Forward Workspace Size: " << workspace_size;
   const size_t input_size = x_dim0 * x_dim1 * x_dim2 * x_dim3;
   const size_t filter_size = w_dim0 * w_dim1 * w_dim2 * w_dim3;
   const size_t output_size = oshape[0] * oshape[1] * oshape[2] * oshape[3];
@@ -111,7 +112,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.miopen.conv2d.setup").set_body([](TVMArgs args,
       rocm_api->AllocWorkspace(entry_ptr->conv_entry.device, filter_size * sizeof(float)));
   float* output_buf = static_cast<float*>(
       rocm_api->AllocWorkspace(entry_ptr->conv_entry.device, output_size * sizeof(float)));
-
+  LOG(INFO) << "MIOpen Conv Forward AllocWorkspace Done";
   const int request_algo_count = 4;
   const bool exhaustive_search = false;
   void* workspace = entry_ptr->conv_entry.workspace;
@@ -124,6 +125,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.miopen.conv2d.setup").set_body([](TVMArgs args,
       entry_ptr->conv_entry.filter_desc, filter_buf, entry_ptr->conv_entry.conv_desc,
       entry_ptr->conv_entry.output_desc, output_buf, request_algo_count, &returned_algo_count,
       perfs, workspace, workspace_size, exhaustive_search));
+  LOG(INFO) << "MIOpen Conv Forward miopenFindConvolutionForwardAlgorithm";
 
   rocm_api->FreeWorkspace(entry_ptr->conv_entry.device, input_buf);
   rocm_api->FreeWorkspace(entry_ptr->conv_entry.device, filter_buf);
@@ -161,7 +163,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.miopen.conv2d.forward")
       const DLTensor* x = args[9];
       const DLTensor* w = args[10];
       const DLTensor* y = args[11];
-
+      bool is_x_float32 = TypeMatch(x->dtype, kDLFloat, 32);
       MIOpenThreadEntry* entry_ptr = MIOpenThreadEntry::ThreadLocal();
       entry_ptr->conv_entry.fwd_algo = static_cast<miopenConvFwdAlgorithm_t>(algo);
       // Set Mode
@@ -188,14 +190,26 @@ TVM_REGISTER_GLOBAL("tvm.contrib.miopen.conv2d.forward")
       MIOPEN_CALL(miopenSet4dTensorDescriptor(entry_ptr->conv_entry.output_desc,
                                               entry_ptr->conv_entry.data_type, y->shape[0],
                                               y->shape[1], y->shape[2], y->shape[3]));
+      if(is_x_float32){
+        const float alpha = 1.f;
+        const float beta = 0.f;
+        MIOPEN_CALL(miopenConvolutionForward(
+            entry_ptr->handle, &alpha, entry_ptr->conv_entry.input_desc, x->data,
+            entry_ptr->conv_entry.filter_desc, w->data, entry_ptr->conv_entry.conv_desc,
+            entry_ptr->conv_entry.fwd_algo, &beta, entry_ptr->conv_entry.output_desc, y->data,
+            entry_ptr->conv_entry.workspace, entry_ptr->conv_entry.workspace_size));
+      }else{
+        ICHECK(TypeMatch(x->dtype, kDLFloat, 16));
+        const float alpha = 1.f;
+        const float beta = 0.f;
+        MIOPEN_CALL(miopenConvolutionForward(
+            entry_ptr->handle, static_cast<const void*>(&alpha), entry_ptr->conv_entry.input_desc,
+            x->data, entry_ptr->conv_entry.filter_desc, w->data, entry_ptr->conv_entry.conv_desc,
+            entry_ptr->conv_entry.fwd_algo, static_cast<const void*>(&beta),
+            entry_ptr->conv_entry.output_desc, y->data, entry_ptr->conv_entry.workspace,
+            entry_ptr->conv_entry.workspace_size));
+      }
 
-      const float alpha = 1.f;
-      const float beta = 0.f;
-      MIOPEN_CALL(miopenConvolutionForward(
-          entry_ptr->handle, &alpha, entry_ptr->conv_entry.input_desc, x->data,
-          entry_ptr->conv_entry.filter_desc, w->data, entry_ptr->conv_entry.conv_desc,
-          entry_ptr->conv_entry.fwd_algo, &beta, entry_ptr->conv_entry.output_desc, y->data,
-          entry_ptr->conv_entry.workspace, entry_ptr->conv_entry.workspace_size));
     });
 
 }  // namespace miopen

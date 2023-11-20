@@ -857,7 +857,7 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
     std::string src = this->PrintExpr(op->args[3]);
     std::string src_offset = this->PrintExpr(op->args[4]);
     PrimExpr stride = op->args[5];
-
+    
     ICHECK((m == 16 && n == 16) || (m == 32 && n==32)) << "Only m == 16 && n == 16 or m == 32 && n == 32 case supported for now";
 
     if(m == 16){
@@ -896,7 +896,9 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
 
       os << "for (int local_id = 0; local_id < 4; ++local_id) {\n";
       os << dst << "[" + this->PrintExpr(dst_ind) + "]"
-         << " = " << src << "[" << src_offset << " + local_id];\n";
+         << " = (";
+      this->PrintType(op->dtype, os);
+      os << ")" << src << "[" << src_offset << " + local_id];\n";
       os << "}\n";
     }else{
       // Each thread in a warp holds a certain number of elements of an MMA output.

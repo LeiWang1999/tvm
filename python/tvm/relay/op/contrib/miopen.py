@@ -149,25 +149,16 @@ def _lower_conv2d(op: relay.Call, inputs: List[te.Tensor]) -> te.Tensor:
         conv_dtype = 0
     elif dtype == "float32":
         conv_dtype = 1
-    print("type of inputs[0]: ", type(inputs[0]))
-    print("type of inputs[1]: ", type(inputs[1]))
-    print("type of pad_h: ", type(pad_h))
-    print("type of pad_w: ", type(pad_w))
-    print("type of stride_h: ", type(stride_h))
-    print("type of stride_w: ", type(stride_w))
-    print("type of dilation_h: ", type(dilation_h))
-    print("type of dilation_w: ", type(dilation_w))
-    print("type of conv_mode: ", type(conv_mode))
-    print("type of conv_dtype: ", type(conv_dtype))
-    print("type of group_count: ", type(group_count))
+    else:
+        raise ValueError("Unsupported data type: {}".format(dtype))
     
     return miopen.conv2d_forward(
         inputs[0],
         inputs[1],
-        int(pad_h),
-        int(pad_w),
         int(stride_h),
         int(stride_w),
+        int(pad_h),
+        int(pad_w),
         int(dilation_h),
         int(dilation_w),
         conv_mode=conv_mode,

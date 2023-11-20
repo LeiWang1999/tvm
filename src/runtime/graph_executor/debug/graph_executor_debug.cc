@@ -70,6 +70,7 @@ class GraphExecutorDebug : public GraphExecutor {
   std::string RunIndividual(int number, int repeat, int min_repeat_ms,
                             int limit_zero_time_iterations, int cooldown_interval_ms,
                             int repeats_to_cooldown) {
+                              printf("RunIndividual\n");
     // warmup run
     GraphExecutor::Run();
     std::string tkey = module_->type_key();
@@ -211,6 +212,7 @@ class GraphExecutorDebug : public GraphExecutor {
   Timer RunOpHost(int index) {
     const Device& dev = data_entry_[entry_id(index, 0)]->device;
     Timer t = Timer::Start(dev);
+    printf("calling: (%d)\n", index);
     op_execs_[index]();
     t->Stop();
     return t;
@@ -470,6 +472,7 @@ PackedFunc GraphExecutorDebug::GetFunction(const std::string& name,
 Module GraphExecutorDebugCreate(const std::string& sym_json, const tvm::runtime::Module& m,
                                 const std::vector<Device>& devs,
                                 PackedFunc lookup_linked_param_func) {
+                                  printf("GraphExecutorDebugCreate\n");
   auto exec = make_object<GraphExecutorDebug>();
   exec->Init(sym_json, m, devs, lookup_linked_param_func);
   return Module(exec);
