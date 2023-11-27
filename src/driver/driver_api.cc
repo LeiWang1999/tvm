@@ -227,11 +227,11 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (!disable_storage_rewrite) {
     pass_list.push_back(tir::transform::StorageRewrite());
   }
-  bool use_async_copy = pass_ctx->GetConfig<Bool>("tir.use_async_copy", Bool(false)).value();
+  // bool use_async_copy = pass_ctx->GetConfig<Bool>("tir.use_async_copy", Bool(false)).value();
 
-  if (use_async_copy) {
-    pass_list.push_back(tir::transform::LowerAsyncDMA());
-  }
+  // if (use_async_copy) {
+  //   pass_list.push_back(tir::transform::LowerAsyncDMA());
+  // }
   pass_list.push_back(tir::transform::UnrollLoop());
 
   // Add user-defined phase-2 passes
