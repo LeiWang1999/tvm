@@ -42,7 +42,7 @@ class TempDirectory(object):
 
     # When True, all TempDirectory are *NOT* deleted and instead live inside a predicable directory
     # tree.
-    _KEEP_FOR_DEBUG = False
+    _KEEP_FOR_DEBUG = True
 
     # In debug mode, each tempdir is named after the sequence
     _NUM_TEMPDIR_CREATED = 0
