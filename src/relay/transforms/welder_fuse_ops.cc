@@ -77,8 +77,7 @@ struct TaggedNodeGraph {
     update_inline_nodes();
     // LOG(INFO) << "after update inline nodes";
     for (auto& node : nodes) {
-      // LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << "
-      // " << node->reverse_inlined_;
+      // LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << " " << node->reverse_inlined_ << " group_id " << node->group_id_;
       if (node->op_type_ == "Tensor" || node->visited_)
         continue;
       else if (node->group_id_ >= 0) {  // already fused
@@ -92,6 +91,11 @@ struct TaggedNodeGraph {
         fuse_from_node(node);
       }
     }
+    // LOG(INFO) << "after update inline nodes stage 2";
+    // for (auto& node : nodes) {
+    //   LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << " "
+    //              << node->reverse_inlined_ << " group_id " << node->group_id_;
+    // }
     // phase 3: handle reserve inlined nodes
     for (auto& node : nodes) {
       if (node->reverse_inlined_) {
@@ -102,22 +106,18 @@ struct TaggedNodeGraph {
         node->group_id_ = out_node->group_id_;
       }
     }
+    // LOG(INFO) << "after handle reserve inlined nodes";
+    // for (auto& node : nodes) {
+    //   LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << " "
+    //             << node->reverse_inlined_ << " group_id " << node->group_id_;
+    // }
     // phase 4: Fuse inline ops
     inline_lightweighted_ops(); 
-    // // phase 5: handle non-group nodes
+    // phase 5: handle non-group nodes
     // LOG(INFO) << "after inline lightweighted ops";
     // for (auto& node : nodes) {
-    //   if (node->op_type_ == "strided_slice"){
-    //     LOG(INFO) << "node "
-    //               << "node " << node->op_type_ << " group_id " << node->group_id_ << "node->input_"
-    //               << node->in_edges_.size() << " " << node->in_edges_[0]->op_type_;
-    //     if (node->group_id_ == -1) {
-    //       LOG(INFO) << "is non-group node";
-    //       LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_
-    //                 << " " << node->reverse_inlined_;
-    //       node->group_id_ = num_group_++;
-    //     }
-    //   }
+    //   LOG(INFO) << "node " << node->op_type_ << " " << node->kind_ << " " << node->inlined_ << " "
+    //             << node->reverse_inlined_ << " group_id " << node->group_id_;
     // }
   }
 
@@ -257,7 +257,7 @@ struct TaggedNodeGraph {
         for (auto out_node : node->out_edges_)
           if (!group->count(out_node)) group_outputs.insert(out_node);
       }
-      if (group_outputs.size() == 0) continue;
+      if (group_outputs.size() == 0) continue;  
       auto output_node = *group_outputs.begin();
       bool op_skip = skip_ops.count(output_node->op_type_) || output_node->kind_ == kOpaque;
       for (auto node : *group) {
@@ -279,7 +279,7 @@ struct TaggedNodeGraph {
   }
   bool is_lightweighted_op(const TaggedNode* node) {
     auto type = node->op_type_;
-    if (type == "reshape" || type == "strided_slice" || type == "Scalar" ||
+    if (type == "strided_slice" || type == "Scalar" ||
         type == "expand_dims" || type == "squeeze") return true;
     if (type == "transpose") {
       Expr expr = GetRef<Expr>(node->node_);
@@ -415,7 +415,6 @@ private:
 
   void VisitExpr_(const ConstantNode* op) final {
     if (op->is_scalar()) {
-      LOG(INFO) << "constant node " << op->data;
       auto node = new TaggedNode(op, g_.nodes.size());
       g_.nodes.push_back(node);
       g_.node_map[op] = node;
