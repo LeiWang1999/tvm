@@ -980,7 +980,8 @@ to be the last item in the input shape.
     .set_attr<FInferCorrectLayout>("FInferCorrectLayout",
                                    NormalizationInferCorrectLayout<InstanceNormAttrs>)
     .set_support_level(1)
-    .add_type_rel("InstanceNorm", InstanceNormRel);
+    .add_type_rel("InstanceNorm", InstanceNormRel)
+    .set_attr<TOpPattern>("TOpPattern", kOutEWiseFusable);
 
 // layer_norm
 TVM_REGISTER_NODE_TYPE(LayerNormAttrs);
