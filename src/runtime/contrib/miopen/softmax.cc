@@ -41,9 +41,9 @@ void softmax_impl(TVMArgs args, TVMRetValue* ret, miopenSoftmaxAlgorithm_t alg) 
   if (axis < 0) axis += ndim;
   ICHECK(axis >= 0 && axis < ndim);
   // just fp32 for now
-  ICHECK(TypeMatch(x->dtype, kDLFloat, 32));
-  ICHECK(TypeMatch(y->dtype, kDLFloat, 32));
-
+  // ICHECK(TypeMatch(x->dtype, kDLFloat, 32));
+  // ICHECK(TypeMatch(y->dtype, kDLFloat, 32));
+  auto dataType = TypeMatch(y->dtype, kDLFloat, 16)? miopenHalf : miopenFloat;
   MIOpenThreadEntry* entry_ptr = MIOpenThreadEntry::ThreadLocal();
 
   miopenSoftmaxMode_t mode;
@@ -53,7 +53,7 @@ void softmax_impl(TVMArgs args, TVMRetValue* ret, miopenSoftmaxAlgorithm_t alg) 
       N *= shape[i];
     }
     mode = MIOPEN_SOFTMAX_MODE_INSTANCE;
-    MIOPEN_CALL(miopenSet4dTensorDescriptor(entry_ptr->softmax_entry.shape_desc, miopenFloat,
+    MIOPEN_CALL(miopenSet4dTensorDescriptor(entry_ptr->softmax_entry.shape_desc, dataType,
                                             static_cast<int>(N), static_cast<int>(shape[ndim - 1]),
                                             1, 1));
   } else {
@@ -68,7 +68,7 @@ void softmax_impl(TVMArgs args, TVMRetValue* ret, miopenSoftmaxAlgorithm_t alg) 
     }
     mode = MIOPEN_SOFTMAX_MODE_CHANNEL;
     MIOPEN_CALL(miopenSet4dTensorDescriptor(
-        entry_ptr->softmax_entry.shape_desc, miopenFloat, static_cast<int>(pre_axis_dim),
+        entry_ptr->softmax_entry.shape_desc, dataType, static_cast<int>(pre_axis_dim),
         static_cast<int>(shape[axis]), static_cast<int>(post_axis_dim), 1));
   }
 

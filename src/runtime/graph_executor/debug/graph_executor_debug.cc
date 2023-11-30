@@ -212,7 +212,6 @@ class GraphExecutorDebug : public GraphExecutor {
   Timer RunOpHost(int index) {
     const Device& dev = data_entry_[entry_id(index, 0)]->device;
     Timer t = Timer::Start(dev);
-    printf("calling: (%d)\n", index);
     op_execs_[index]();
     t->Stop();
     return t;

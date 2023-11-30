@@ -84,6 +84,10 @@ class CodeGenHIP final : public CodeGenC {
                        bool skip_first_arg, std::ostream& os) final;  // NOLINT(*)
 
  private:
+  // Handle volatile loads
+  void HandleVolatileLoads(const std::string& value, const BufferLoadNode* op,
+                           std::ostream& os) final;
+
   CodeGenCUDA cuda_codegen_;
   // Whether global barrier is needed.
   bool need_global_barrier_{false};

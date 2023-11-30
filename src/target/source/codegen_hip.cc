@@ -103,7 +103,22 @@ __pack_half2(const half x, const half y) {
   }
 
   if (need_math_constants_h_) {
-    decl_stream << "#include <math_constants.h>\n";
+    decl_stream << "#include <math.h>\n";
+    decl_stream << R"(
+
+ #define HIPRT_INF_F        __int_as_float(0x7f800000)
+ #define HIPRT_NAN_F        __int_as_float(0x7fffffff)
+ #define HIPRT_MIN_DENORM_F __int_as_float(0x00000001)
+ #define HIPRT_MAX_NORMAL_F __int_as_float(0x7f7fffff)
+ #define HIPRT_NEG_ZERO_F   __int_as_float(0x80000000)
+ #define HIPRT_ZERO_F       0.0f
+ #define HIPRT_ONE_F        1.0f
+ 
+ /* double precision constants */
+ #define HIPRT_INF          __hiloint2double(0x7ff00000, 0x00000000)
+ #define HIPRT_NAN          __hiloint2double(0xfff80000, 0x00000000)
+
+  )";
   }
 
   if (need_wmma_h_) {
@@ -713,10 +728,10 @@ inline void PrintConst(const FloatImmNode* op, std::ostream& os, CodeGenHIP* p) 
         if (op->value < 0) {
           temp << "-";
         }
-        temp << ((op->dtype.bits() == 32) ? "CUDART_INF_F" : "CUDART_INF");
+        temp << ((op->dtype.bits() == 32) ? "HIPRT_INF_F" : "HIPRT_INF");
         p->need_math_constants_h_ = true;
       } else if (std::isnan(op->value)) {
-        temp << ((op->dtype.bits() == 32) ? "CUDART_NAN_F" : "CUDART_NAN");
+        temp << ((op->dtype.bits() == 32) ? "HIPRT_NAN_F" : "HIPRT_NAN");
         p->need_math_constants_h_ = true;
       } else {
         temp << std::scientific << op->value;
@@ -740,6 +755,20 @@ inline void PrintConst(const FloatImmNode* op, std::ostream& os, CodeGenHIP* p) 
 
 void CodeGenHIP::VisitExpr_(const FloatImmNode* op, std::ostream& os) {  // NOLINT(*)
   PrintConst(op, os, this);
+}
+
+void CodeGenHIP::HandleVolatileLoads(const std::string& value, const BufferLoadNode* op,
+                                      std::ostream& os) {
+  // Cast away volatile qualifier for fp16 types. That is, only loads and
+  // stores are volatile. The loaded objects are not marked as volatile.
+  //
+  if ((op->dtype.is_float16() || op->dtype.is_bfloat16()) && IsVolatile(op->buffer->data.get())) {
+    os << "(";
+    PrintType(op->dtype, os);
+    os << ")(" << value << ")";
+  } else {
+    os << value;
+  }
 }
 
 void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
