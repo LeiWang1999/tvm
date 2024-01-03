@@ -845,6 +845,12 @@ TensorIntrin.register(
     *get_wmma_load_intrin(16, 16, 16, "int8", "shared", False, False),
 )
 
+WMMA_LOAD_16x16x16_S8_A_INTRIN_global = "wmma_load_16x16x16_s8_a_global"
+TensorIntrin.register(
+    WMMA_LOAD_16x16x16_S8_A_INTRIN_global,
+    *get_wmma_load_intrin(16, 16, 16, "int8", "global", False, False),
+)
+
 WMMA_LOAD_16x16x16_S8_B_INTRIN = "wmma_load_16x16x16_s8_b"
 TensorIntrin.register(
     WMMA_LOAD_16x16x16_S8_B_INTRIN,
@@ -863,6 +869,12 @@ TensorIntrin.register(
     *get_wmma_load_intrin(16, 16, 16, "int8", "shared", True, True),
 )
 
+
+WMMA_LOAD_16x16x16_S8_B_TRANS_INTRIN_global = "wmma_load_16x16x16_s8_b_trans_global"
+TensorIntrin.register(
+    WMMA_LOAD_16x16x16_S8_B_TRANS_INTRIN_global,
+    *get_wmma_load_intrin(16, 16, 16, "int8", "global", True, True),
+)
 
 WMMA_FILL_16x16x16_F32_INTRIN = "wmma_fill_16x16x16_f32"
 TensorIntrin.register(WMMA_FILL_16x16x16_F32_INTRIN, *get_wmma_fill_intrin(16, 16, 16, "float32"))

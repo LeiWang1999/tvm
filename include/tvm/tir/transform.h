@@ -509,9 +509,9 @@ TVM_DLL Pass CommonSubexprElimTIR(bool enable_cse_tir = true, bool identify_equi
 TVM_DLL Pass UnifyThreadBinding();
 
 /*!
- *  A pass to merge multiple TIR-level dynamic shared memory allocations into one
+ *  A pass to merge multiple TIR-level dynamic or static shared memory allocations into one
  */
-TVM_DLL Pass MergeDynamicSharedMemoryAllocations();
+TVM_DLL Pass MergeSharedMemoryAllocations();
 
 /*!
  * \brief This pass is post-scheduling pass to convert all

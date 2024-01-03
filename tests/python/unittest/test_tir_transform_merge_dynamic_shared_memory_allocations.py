@@ -31,7 +31,7 @@ def run_passes(sch, args):
             tvm.tir.transform.Simplify(),
             tvm.tir.transform.VectorizeLoop(),
             tvm.tir.transform.StorageRewrite(),
-            tvm.tir.transform.MergeDynamicSharedMemoryAllocations(),
+            tvm.tir.transform.MergeSharedMemoryAllocations(),
         ]
     )(mod)
 

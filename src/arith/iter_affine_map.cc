@@ -251,8 +251,6 @@ class IterMapRewriter : public ExprMutator {
     collector.Collect(bindings);
 
     for (const IterMark& mark : collector.visited_) {
-      // print mark
-
       if (TryNormalizeSplits(mark, collector.mark2splits_[mark], check_level).empty()) {
         return false;
       }
@@ -1171,14 +1169,14 @@ IterMapResult DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range
   result->padding_predicate = rewriter.padding_predicate();
 
   // Step1: IterIndependenceChecker checks if the iterator are independent.
-  // if (!rewriter.CheckMapping(rewrite_indices, check_level)) {
-  //   if (check_level == IterMapLevel::Bijective) {
-  //     result->errors.push_back("Index mapping does not form a bijective transform.");
-  //   } else {
-  //     result->errors.push_back("Mapped indices are not independent.");
-  //   }
-  //   return result;
-  // }
+  if (!rewriter.CheckMapping(rewrite_indices, check_level)) {
+    if (check_level == IterMapLevel::Bijective) {
+      result->errors.push_back("Index mapping does not form a bijective transform.");
+    } else {
+      result->errors.push_back("Mapped indices are not independent.");
+    }
+    return result;
+  }
   result->indices = rewrite_indices;
   return result;
 }
@@ -1903,7 +1901,6 @@ class SubspaceDivider {
       DivisionResult arg_division = DivideIterSplitExpr(arg);
       IterSplitExpr new_arg;
       if (arg_division.IsInner()) {
-        // LOG(INFO) << "arg_division is inner";
         if (!inner) {
           unresolved_count_++;
           return DivisionResult::Failure();
@@ -1912,7 +1909,6 @@ class SubspaceDivider {
         inner_args.push_back(new_arg);
         inner = true;
       } else if (arg_division.IsOuter()) {
-        // LOG(INFO) << "arg_division is outer";
         new_arg = arg_division.GetOuterAsSplit();
         outer_args.push_back(new_arg);
         inner = false;
@@ -1920,7 +1916,6 @@ class SubspaceDivider {
         unresolved_count_++;
         return DivisionResult::Failure();
       }
-      // LOG(INFO) << "args.extent " << new_arg->extent << " args.scale " << new_arg->scale;
       extent += ((new_arg->extent - 1) * new_arg->scale);
     }
     extent += last_scale;
@@ -1929,13 +1924,7 @@ class SubspaceDivider {
       unresolved_count_++;
       return DivisionResult::Failure();
     }
-    // LOG(INFO) << "extent " << extent << " mark_extent " << mark_extent;
     bool need_predicate = !analyzer_->CanProveEqual(extent, mark_extent);
-    // if(need_predicate){
-    //   LOG(INFO) << extent;
-    //   LOG(INFO) << "need_predicate: " << need_predicate;
-    //   LOG(INFO) << "expr: " << expr;
-    // }
     const IterMark& outer_mark = MarkFromArgsAndBase(outer_args, make_const(dtype, 0));
     const IterMark& inner_mark = MarkFromArgsAndBase(inner_args, expr->base);
     IterSumExpr outer_source = Downcast<IterSumExpr>(outer_mark->source);
@@ -2110,11 +2099,7 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
 
   std::vector<Array<IterMark>> results;
   for (const IterSumExpr& expr : maps) {
-    // LOG(INFO) << "SubspaceDivide: " << expr;
-
     SubspaceDivider::DivisionResult res = subspace_divider.DivideIterSumExpr(expr, 0);
-    // LOG(INFO) << "Outer: " << res.outer;
-    // LOG(INFO) << "GetOuterPreds: " << subspace_divider.GetOuterPreds();
     if (subspace_divider.unresolved_count()) return {};
     results.push_back(
         {IterMark(res.outer, res.outer_extent), IterMark(res.inner, res.inner_extent)});

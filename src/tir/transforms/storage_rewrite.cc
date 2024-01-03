@@ -400,11 +400,12 @@ class StoragePlanRewriter : public StmtExprMutator {
   using StmtEntry = LinearAccessPatternFinder::StmtEntry;
   using AllocEntry = LinearAccessPatternFinder::AllocEntry;
 
-  Stmt Rewrite(Stmt stmt, bool detect_inplace) {
+  Stmt Rewrite(Stmt stmt, bool detect_inplace, bool enable_reuse) {
     detect_inplace_ = detect_inplace;
     // plan the rewrite
     LinearAccessPatternFinder finder;
     finder(stmt);
+    
     this->LivenessAnalysis(finder.linear_seq_);
     this->PlanMemory(finder.linear_seq_, finder.alloc_info_);
     this->PrepareNewAlloc();
@@ -827,7 +828,7 @@ class StoragePlanRewriter : public StmtExprMutator {
 
   // Memory plan algorithm
   void PlanMemory(const std::vector<StmtEntry>& seq,
-                  const std::unordered_map<const VarNode*, AllocEntry>& alloc_info) {
+                  const std::unordered_map<const VarNode*, AllocEntry>& alloc_info, bool enable_reuse=true) {
     std::unordered_set<const VarNode*> inplace_flag;
 
     for (size_t i = 0; i < seq.size(); ++i) {
@@ -905,8 +906,7 @@ class StoragePlanRewriter : public StmtExprMutator {
       if (it != event_map_.end() && seq[i].scope_pair_offset <= 0) {
         for (const VarNode* var : it->second.kill) {
           const auto f = runtime::Registry::Get("memopt.is_reuse_disabled");
-          if (f && (*f)(var->name_hint).operator bool())
-            continue;
+          if (enable_reuse || (f && (*f)(var->name_hint).operator bool())) continue;
 
           // skip space which are already replaced by inplace
           if (!inplace_flag.count(var)) {
@@ -1693,7 +1693,12 @@ namespace transform {
 Pass StorageRewrite() {
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
-    n->body = StoragePlanRewriter().Rewrite(std::move(n->body), true);
+    // if we enable static smem merge, we should disable the trivial reuse of shared memory in
+    // storage rewrite pass.
+    bool merge_static_smem =
+        ctx->GetConfig<Bool>("tir.merge_static_smem", Bool(false)).value();
+
+    n->body = StoragePlanRewriter().Rewrite(std::move(n->body), true, !merge_static_smem);
     // Parameters may not be rewritten, but internal allocations may.
     // Vectorization of AllocateConst is currently disabled, as it has
     // indexing issues for types that include padding (e.g. int8x3
