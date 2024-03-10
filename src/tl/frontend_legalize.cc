@@ -157,6 +157,7 @@ using namespace tir::transform;
 
 Pass FrontendLegalize() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
+    LOG(INFO) << "FrontendLegalize\n" << f;
     return FrontendLegalizer::Substitute(std::move(f));
   };
   return CreatePrimFuncPass(pass_func, 0, "tl.FrontendLegalize", {});

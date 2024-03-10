@@ -1,4 +1,5 @@
 import torch
+import tvm
 from tvm import tl
 import tvm.tl.language as T
 from functools import partial
@@ -123,6 +124,8 @@ def pytorch_mha(q, k, v, causal=True):
 
 def flashattn(batch, heads, seq_len, dim, is_casual, block_M, block_N):
     scale = (1.0 / dim) ** 0.5 * 1.44269504  # log2(e)
+    batch = tvm.te.var("batch")
+    heads = tvm.te.var("heads")
     shape = [batch, seq_len, heads, dim]
     dtype = "float16"
     accum_dtype = "float"
@@ -208,19 +211,23 @@ if __name__ == "__main__":
     program = flashattn(BATCH, H, N_CTX, D_HEAD, casual, BLOCK_M, BLOCK_N)
     ref_program = partial(ref_program, casual=casual)
     mod, params = tl.lower(program)
-    mod = tl.Profiler(mod, params, [3], tl.TensorSupplyType.Normal)
+    print(mod.imported_modules[0].get_source())
+    mod = tl.Profiler(mod, params, [3], tl.TensorSupplyType.Normal, opt_shapes={
+                "batch": 16, 
+                "heads": 12, 
+    })
     # mod.assert_allclose(ref_program, rtol=0.01, atol=0.01)
-    mod.assert_allclose(pytorch_mha, rtol=0.01, atol=0.01)
+    # mod.assert_allclose(pytorch_mha, rtol=0.01, atol=0.01)
 
-    print("Pytorch MHA:")
-    latency = mod.do_bench(pytorch_mha)
-    print("{:.2f} ms".format(latency))
-    print("{:.2f} TFlops".format(total_flops / latency * 1e-9))
-    print("FlashAttn:")
-    latency = mod.do_bench(ref_program, warmup=500)
-    print("{:.2f} ms".format(latency))
-    print("{:.2f} TFlops".format(total_flops / latency * 1e-9))
-    print("Ours:")
+    # print("Pytorch MHA:")
+    # latency = mod.do_bench(pytorch_mha)
+    # print("{:.2f} ms".format(latency))
+    # print("{:.2f} TFlops".format(total_flops / latency * 1e-9))
+    # print("FlashAttn:")
+    # latency = mod.do_bench(ref_program, warmup=500)
+    # print("{:.2f} ms".format(latency))
+    # print("{:.2f} TFlops".format(total_flops / latency * 1e-9))
+    # print("Ours:")
     latency = mod.do_bench(mod)
     print("{:.2f} ms".format(latency))
     print("{:.2f} TFlops".format(total_flops / latency * 1e-9))

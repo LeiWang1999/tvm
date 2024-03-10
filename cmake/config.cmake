@@ -46,7 +46,7 @@
 # - ON: enable CUDA with cmake's auto search
 # - OFF: disable CUDA
 # - /path/to/cuda: use specific path to cuda toolkit
-set(USE_CUDA OFF)
+set(USE_CUDA ON)
 
 # Whether to enable NCCL support:
 # - ON: enable NCCL with cmake's auto search
@@ -154,7 +154,7 @@ set(USE_MICRO_STANDALONE_RUNTIME OFF)
 # - OFF: disable llvm, note this will disable CPU codegen
 #        which is needed for most cases
 # - /path/to/llvm-config: enable specific LLVM when multiple llvm-dev is available.
-set(USE_LLVM OFF)
+set(USE_LLVM ON)
 
 # Whether use MLIR to help analyze, requires USE_LLVM is enabled
 # Possible values: ON/OFF
@@ -434,3 +434,5 @@ set(USE_UMA OFF)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
+
+set(HIDE_PRIVATE_SYMBOLS ON)

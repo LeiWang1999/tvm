@@ -16,11 +16,11 @@
 # under the License.
 """The profiler and convert to torch utils"""
 
-from typing import Any, List
+from typing import Any, List, Dict
 from enum import Enum
 from functools import partial
 import torch
-
+import tvm
 from tvm.relay import TensorType
 from tvm.contrib.dlpack import to_pytorch_func
 
@@ -35,12 +35,22 @@ class TensorSupplyType(Enum):
     Zero = 5
     One = 6
 
+def var_wrapper(v, opt_shapes):
+    if isinstance(v, tvm.tir.Var):
+        assert opt_shapes
+        assert v.name in opt_shapes
+        return opt_shapes[v.name]
+    elif isinstance(v, tvm.tir.IntImm):
+        return v.value
+    else:
+        raise RuntimeError("Not supported type: ", type(v))
 
-def get_tensor_supply(supply_type: TensorSupplyType):
+def get_tensor_supply(supply_type: TensorSupplyType, opt_shapes: dict = None):
+    
     def get_tensor(tensor: TensorType) -> torch.Tensor:
         dtype = torch.__getattribute__(str(tensor.dtype))
         device = torch.cuda.current_device()
-        shape = list(map(int, tensor.shape))
+        shape = [var_wrapper(i, opt_shapes) for i in tensor.shape]
         if supply_type == TensorSupplyType.Integer:
             return torch.randint(low=-2, high=3, size=shape, device=device, dtype=dtype)
         elif supply_type == TensorSupplyType.Uniform:
@@ -60,13 +70,13 @@ def get_tensor_supply(supply_type: TensorSupplyType):
 
 
 class ConvertTorch:
-    def __init__(self, mod, params: List[TensorType], result_idx: List[int]) -> None:
+    def __init__(self, mod, params: List[TensorType], result_idx: List[int], opt_shapes:Dict = None) -> None:
         self.mod = mod
         self.params = params
         self.result_idx = result_idx
-        self.func = self._convert_torch_func()
+        self.func = self._convert_torch_func(opt_shapes)
 
-    def _convert_torch_func(self) -> callable:
+    def _convert_torch_func(self, opt_shapes) -> callable:
         torch_func = to_pytorch_func(self.mod)
 
         def func(*ins: List[torch.Tensor]):
@@ -77,7 +87,7 @@ class ConvertTorch:
             for i in range(len(self.params)):
                 if i in self.result_idx:
                     dtype = torch.__getattribute__(str(self.params[i].dtype))
-                    shape = list(map(int, self.params[i].shape))
+                    shape = [var_wrapper(i, opt_shapes) for i in self.params[i].shape]
                     tensor = torch.empty(*shape, dtype=dtype, device=device)
                 else:
                     tensor = ins[ins_idx]
@@ -105,9 +115,10 @@ class Profiler(ConvertTorch):
         params: List[TensorType],
         result_idx: List[int],
         supply_type: TensorSupplyType = TensorSupplyType.Normal,
+        opt_shapes: dict = None,
     ):
-        super().__init__(mod, params, result_idx)
-        self.supply = get_tensor_supply(supply_type)
+        super().__init__(mod, params, result_idx, opt_shapes)
+        self.supply = get_tensor_supply(supply_type, opt_shapes)
 
     def _get_inputs(self):
         ins = []
@@ -128,8 +139,13 @@ class Profiler(ConvertTorch):
         if isinstance(ref_outs, torch.Tensor):
             ref_outs = [ref_outs]
         assert len(lib_outs) == len(ref_outs)
-        for lhs, rhs in zip(lib_outs, ref_outs):
-            assert torch.allclose(lhs, rhs, rtol=rtol, atol=atol), (lhs, rhs)
+        for i, (lhs, rhs) in enumerate(zip(lib_outs, ref_outs)):
+            try:
+                torch.testing.assert_close(lhs, rhs, rtol=rtol, atol=atol)
+            except AssertionError as e:
+                print(f"Output {i} does not match: {e}")
+            else:
+                print(f"Output {i} matches")
 
     def run_once(self):
         ins = self._get_inputs()

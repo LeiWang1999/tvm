@@ -154,6 +154,7 @@ IterVar::IterVar(Range dom, Var var, IterVarType t, String thread_tag, Span span
            "dtype is "
         << dom->extent.dtype();
     CHECK_EQ(dom->extent.dtype(), var.dtype())
+        << "var " << var
         << "The dtype of the extent of an IterVar (" << dom->extent.dtype()
         << ") must match its associated Var's dtype (" << var.dtype() << ")";
   }
