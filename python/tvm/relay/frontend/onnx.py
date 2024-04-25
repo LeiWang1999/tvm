@@ -4827,7 +4827,7 @@ class QuantLinear(OnnxOpConverter):
         assert scales_type.dtype == a_type.dtype
         assert zeros_type.dtype == a_type.dtype
         
-        return relay.Call(_op.get("ladder.quant_linear"), inputs, make_node("DictAttrs", transpose_a=False, transpose_b=True))
+        return relay.Call(_op.get("ladder.quant_linear"), inputs, make_node("DictAttrs", transpose_a=False, transpose_b=True, bits=4, format="int", group_size=-1, out_dtype="float16"))
 
 
 class MatMulInteger(OnnxOpConverter):
