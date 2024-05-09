@@ -73,7 +73,22 @@ void CodeGenHIP::Init(bool output_ssa) {
   this->cuda_codegen_.Init(output_ssa);
 }
 
+void CodeGenHIP::HandleVolatileLoads(const std::string& value, const BufferLoadNode* op,
+                                      std::ostream& os) {
+  // Cast away volatile qualifier for fp16 types. That is, only loads and
+  // stores are volatile. The loaded objects are not marked as volatile.
+  //
+  if ((op->dtype.is_float16() || op->dtype.is_bfloat16()) && IsVolatile(op->buffer->data.get())) {
+    os << "(";
+    PrintType(op->dtype, os);
+    os << ")(" << value << ")";
+  } else {
+    os << value;
+  }
+}
+
 void CodeGenHIP::PrintFuncPrefix(std::ostream& os) { os << "extern \"C\" __global__ "; }
+
 
 std::string CodeGenHIP::Finish() {
   // hip must need a header file.
@@ -81,15 +96,44 @@ std::string CodeGenHIP::Finish() {
 
   if (enable_fp16_) {
     decl_stream << "#include <hip/hip_fp16.h>\n";
+
+    decl_stream << R"(
+// Pack two half values.
+static inline __device__ __host__ unsigned
+__pack_half2(const half x, const half y) {
+  unsigned v0 = *((unsigned short *)&x);
+  unsigned v1 = *((unsigned short *)&y);
+  return (v1 << 16) | v0;
+})";
+
     decl_stream << "using float16_t = _Float16;\n";
     decl_stream << "using float16x2\n";
     decl_stream << " = __attribute__((__vector_size__(2 * sizeof(float16_t)))) float16_t;\n";
     decl_stream << "using float16x4\n";
     decl_stream << " = __attribute__((__vector_size__(4 * sizeof(float16_t)))) float16_t;\n";
+    decl_stream << "using float16x8\n";
+    decl_stream << " = __attribute__((__vector_size__(8 * sizeof(float16_t)))) float16_t;\n";
+    decl_stream << "using float16x16\n";
+    decl_stream << " = __attribute__((__vector_size__(16 * sizeof(float16_t)))) float16_t;\n";
   }
 
   if (need_math_constants_h_) {
-    decl_stream << "#include <math_constants.h>\n";
+    decl_stream << "#include <math.h>\n";
+    decl_stream << R"(
+
+ #define HIPRT_INF_F        __int_as_float(0x7f800000)
+ #define HIPRT_NAN_F        __int_as_float(0x7fffffff)
+ #define HIPRT_MIN_DENORM_F __int_as_float(0x00000001)
+ #define HIPRT_MAX_NORMAL_F __int_as_float(0x7f7fffff)
+ #define HIPRT_NEG_ZERO_F   __int_as_float(0x80000000)
+ #define HIPRT_ZERO_F       0.0f
+ #define HIPRT_ONE_F        1.0f
+ 
+ /* double precision constants */
+ #define HIPRT_INF          __hiloint2double(0x7ff00000, 0x00000000)
+ #define HIPRT_NAN          __hiloint2double(0xfff80000, 0x00000000)
+
+  )";
   }
 
   if (need_wmma_h_) {
@@ -99,9 +143,15 @@ std::string CodeGenHIP::Finish() {
   decl_stream << " = __attribute__((__vector_size__(4 * sizeof(int)))) int;\n";
   decl_stream << "using float32x4\n";
   decl_stream << " = __attribute__((__vector_size__(4 * sizeof(float)))) float;\n";
+  decl_stream << "using float32x16\n";
+  decl_stream << " = __attribute__((__vector_size__(16 * sizeof(float)))) float;\n";
 
+  decl_stream << "#define max(a, b) (((a) > (b)) ? (a) : (b))\n";
+  decl_stream << "#define min(a, b) (((a) < (b)) ? (a) : (b))\n";
+  
   return CodeGenC::Finish();
 }
+
 
 class ThreadIdxExtractor : public tir::StmtVisitor {
  private:
@@ -126,21 +176,6 @@ class ThreadIdxExtractor : public tir::StmtVisitor {
   PrimExpr threadIdx_y_ext = Integer(1);
   PrimExpr threadIdx_z_ext = Integer(1);
 };
-
-void CodeGenHIP::PrintExtraAttrs(const PrimFunc& f, std::ostream& os) {
-  ThreadIdxExtractor extractor;
-  extractor(f->body);
-  arith::Analyzer analyzer;
-  PrimExpr threadIdx_ext = analyzer.Simplify(extractor.threadIdx_x_ext * extractor.threadIdx_y_ext *
-                                             extractor.threadIdx_z_ext);
-  if (const IntImmNode* const threadIdx_ext_int = threadIdx_ext.as<IntImmNode>()) {
-    if (threadIdx_ext_int->value == 1) {
-      // unable to extract the number of threads per block, hence directly return
-      return;
-    }
-    stream << " __launch_bounds__(" << threadIdx_ext_int->value << ")";
-  }
-}
 
 void CodeGenHIP::VisitStmt_(const tir::ForNode* op) {
   ICHECK(is_const_int(op->min, 0));

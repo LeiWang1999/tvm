@@ -175,13 +175,13 @@ class ROCMWrappedFunc {
                                            wl.block_dim(2), wl.dyn_shmem_size, strm, nullptr,
                                            reinterpret_cast<void**>(&config)));
     
-    std::ostringstream os;
-    os << "ROCMLaunch Info: "
-        << " grid=(" << wl.grid_dim(0) << "," << wl.grid_dim(1) << "," << wl.grid_dim(2) << "), "
-        << " block=(" << wl.block_dim(0) << "," << wl.block_dim(1) << "," << wl.block_dim(2)
-        << ")\n";
+    // std::ostringstream os;
+    // os << "ROCMLaunch Info: "
+    //     << " grid=(" << wl.grid_dim(0) << "," << wl.grid_dim(1) << "," << wl.grid_dim(2) << "), "
+    //     << " block=(" << wl.block_dim(0) << "," << wl.block_dim(1) << "," << wl.block_dim(2)
+    //     << ")\n";
     
-    LOG(INFO)<<os.str();
+    // LOG(INFO)<<os.str();
 
   }
 

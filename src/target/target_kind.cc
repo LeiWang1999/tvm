@@ -114,13 +114,17 @@ static int ExtractIntWithPrefix(const std::string& str, const std::string& prefi
  * \param prefix The prefix to be checked
  * \return A string, the extracted string. "" if the check fails
  */
-std::string ExtractStringWithPrefix(const std::string& str, const std::string& prefix) {
+std::string ExtractStringWithPrefix(const std::string& str, const std::string& prefix,
+                                    bool keep_prefix = false) {
   if (str.find(prefix) != 0) return "";
   std::size_t pos = prefix.length();
   while (pos < str.length() && (std::isdigit(str[pos]) || std::isalpha(str[pos]))) {
     ++pos;
   }
-  return str.substr(prefix.length(), pos - prefix.length());
+  if (keep_prefix) 
+    return str.substr(0, pos);
+  else
+    return str.substr(prefix.length(), pos - prefix.length());
 }
 
 /*!
@@ -228,7 +232,7 @@ TargetJSON UpdateROCmAttrs(TargetJSON target) {
   std::string arch = "gfx900";
   if (target.count("mcpu")) {
     String mcpu = Downcast<String>(target.at("mcpu"));
-    arch = ExtractStringWithPrefix(mcpu, "gfx");
+    arch = ExtractStringWithPrefix(mcpu, "gfx", true);
     ICHECK(!arch.empty()) << "ValueError: ROCm target gets an invalid GFX version: -mcpu=" << mcpu;
   } else {
     TVMRetValue val;

@@ -18,7 +18,7 @@
 import ctypes
 import os
 import shutil
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np  # type: ignore
 import psutil  # type: ignore
@@ -28,7 +28,8 @@ from tvm.ir import Array, IRModule, Map
 from tvm.rpc import RPCSession
 from tvm.runtime import PackedFunc, String
 from tvm.tir import FloatImm, IntImm
-
+import logging
+from contextlib import contextmanager
 
 def derived_object(cls: type) -> type:
     """A decorator to register derived subclasses for TVM objects.
@@ -376,3 +377,70 @@ def fork_seed(seed: Optional[int], n: int) -> List[int]:
     # fmt: off
     return np.random.RandomState(seed=seed).randint(1, 2 ** 30, size=n).tolist()
     # fmt: on
+
+
+def make_logging_func(logger: logging.Logger) -> Optional[Callable]:
+    """Get the logging function.
+    Parameters
+    ----------
+    logger : logging.Logger
+        The logger instance.
+    Returns
+    -------
+    result : Optional[Callable]
+        The function to do the specified level of logging.
+    """
+    if logger is None:
+        return None
+
+    level2log = {
+        logging.DEBUG: logger.debug,
+        logging.INFO: logger.info,
+        logging.WARNING: logger.warning,
+        logging.ERROR: logger.error,
+        # logging.FATAL not included
+    }
+
+    def logging_func(level: int, msg: str):
+        level2log[level](msg)
+
+    return logging_func
+
+@contextmanager
+def autotvm_silencer():
+    """A context manager that silences autotvm warnings."""
+    from tvm import autotvm  # pylint: disable=import-outside-toplevel
+
+    silent = autotvm.GLOBAL_SCOPE.silent
+    autotvm.GLOBAL_SCOPE.silent = True
+    try:
+        yield
+    finally:
+        autotvm.GLOBAL_SCOPE.silent = silent
+
+
+def batch_parameterize_config(
+    config: Dict[str, Any], params: List[Dict[str, str]]
+) -> Dict[str, Any]:
+    """Parameterize the given configuration with multiple parameters sets.
+
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        The given config dict.
+    Params : List[Dict[str, str]]
+        List of the given multiple parameters sets.
+
+    Returns
+    -------
+    result : Dict[str, Any]
+        The parameterized configuration.
+    """
+    results = {}
+    for name, cfg in config.items():
+        for p in params:
+            p_name = name.format(**p)
+            if p_name not in results:
+                p_cfg = parameterize_config(cfg, p)
+                results[p_name] = p_cfg
+    return results
