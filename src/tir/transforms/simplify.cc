@@ -30,7 +30,7 @@
 #include <tvm/tir/transform.h>
 
 #include <optional>
-
+#include "../../tir/transforms/simplify.h"
 #include "../../arith/ir_mutator_with_analyzer.h"
 #include "../../tir/analysis/control_flow_graph.h"
 
@@ -269,6 +269,13 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
 }  // namespace arith
 
 namespace tir {
+
+
+PrimFunc Simplify(PrimFunc func, arith::Analyzer* analyzer) {
+  auto* n = func.CopyOnWrite();
+  n->body = arith::StmtSimplifier::Apply(std::move(n->body), analyzer);
+  return func;
+}
 
 Stmt Simplify(Stmt stmt, arith::Analyzer* analyzer) {
   return arith::StmtSimplifier::Apply(stmt, analyzer);

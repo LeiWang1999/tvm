@@ -30,6 +30,12 @@
 namespace tvm {
 namespace tir {
 
+/* \brief Simplifies the prim func
+ *
+ * Applies the same behavior as the tir.transform.Simplify pass.
+ */
+PrimFunc Simplify(PrimFunc stmt, arith::Analyzer* analyzer);
+
 /* \brief Simplifies the statement
  *
  * Applies the same behavior as the tir.transform.Simplify pass, but

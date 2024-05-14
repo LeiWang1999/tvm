@@ -19,7 +19,7 @@
 #include <tvm/tir/data_type_rewriter.h>
 
 #include <functional>
-
+#include "../../transforms/simplify.h"
 #include "../ir_comparator.h"
 #include "../utils.h"
 
@@ -530,7 +530,8 @@ void Tensorize(ScheduleState self, const StmtSRef& sref, const TensorIntrin& int
                << GetRef<Stmt>(sref->stmt);
     throw;
   }
-  PrimFunc intrin_desc = intrin->desc;
+  arith::Analyzer analyzer;
+  PrimFunc intrin_desc = Simplify(intrin->desc, &analyzer);
   PrimFunc intrin_impl = DeepCopy(intrin->impl);
 
   int index_dtype_bits = -1;
