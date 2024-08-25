@@ -78,18 +78,39 @@ void CodeGenHIP::PrintFuncPrefix(std::ostream& os) { os << "extern \"C\" __globa
 std::string CodeGenHIP::Finish() {
   // hip must need a header file.
   decl_stream << "#include <hip/hip_runtime.h>\n";
+  decl_stream << "using int8x4\n";
+  decl_stream << " = __attribute__((__vector_size__(4 * sizeof(int8_t)))) int8_t;\n";
+
 
   if (enable_fp16_) {
     decl_stream << "#include <hip/hip_fp16.h>\n";
 
+    decl_stream << "#include <hip/hip_bfloat16.h>\n";
+
     decl_stream << R"(
+
+#define half _Float16
+#define __float2half_rn(x) half(x)
+
+#include <hip/hcc_detail/hip_fp16_math_fwd.h>
+
+#define hpow __ocml_pown_f16
+#define hsqrt __ocml_sqrt_f16
+
+#define htanh(x) __float2half_rn(tanh(__half2float(x)))
+#define htan(x) __float2half_rn(tanf(__half2float(x)))
+#define hatan(x) __float2half_rn(atanf(__half2float(x)))
+#define herf(x) __float2half_rn(erff(__half2float(x)))
+#define hexp(x) __float2half_rn(expf(__half2float(x)))
+
 // Pack two half values.
 static inline __device__ __host__ unsigned
 __pack_half2(const half x, const half y) {
   unsigned v0 = *((unsigned short *)&x);
   unsigned v1 = *((unsigned short *)&y);
   return (v1 << 16) | v0;
-})";
+}
+)";
 
     decl_stream << "using float16_t = _Float16;\n";
     decl_stream << "using float16x2\n";
@@ -100,6 +121,12 @@ __pack_half2(const half x, const half y) {
     decl_stream << " = __attribute__((__vector_size__(8 * sizeof(float16_t)))) float16_t;\n";
     decl_stream << "using float16x16\n";
     decl_stream << " = __attribute__((__vector_size__(16 * sizeof(float16_t)))) float16_t;\n";
+
+    decl_stream << "using bfloat16_t = hip_bfloat16;\n";
+    decl_stream << "using bfloat16x2\n";
+    decl_stream << " = __attribute__((__vector_size__(2 * sizeof(bfloat16_t)))) float16_t;\n";
+    decl_stream << "using bfloat16x4\n";
+    decl_stream << " = __attribute__((__vector_size__(4 * sizeof(bfloat16_t)))) float16_t;\n";
   }
 
   if (need_math_constants_h_) {
@@ -853,11 +880,13 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
     std::unordered_map<std::string, std::string> dtype_map = {
         {"int8", "char"},
         {"int32", "int"},
+        {"int8x4", "int32_t"},
         {"int32x4", "int32x4"},
         {"float16", "half"},
         {"float32", "float"},
         {"float64", "double"},
         {"float16x4", "float16x4"},
+        {"bfloat16x4", "bfloat16x4"},
         {"float32x4", "float32x4"},
         {"float32x16", "float32x16"}
     };
@@ -1006,6 +1035,7 @@ void CodeGenHIP::VisitExpr_(const CallNode* op, std::ostream& os) {
         {"float32", "float"},
         {"float64", "double"},
         {"float16x4", "float16x4"},
+        {"bfloat16x4", "bfloat16x4"},
         {"float16x8", "float16x16"},
         {"float16x16", "float16x16"},
         {"float32x4", "float32x4"},

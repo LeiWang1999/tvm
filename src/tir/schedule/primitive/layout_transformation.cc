@@ -1058,7 +1058,9 @@ class TransformationIntroducesPaddingError : public ScheduleError {
 // dtype-mismatch issues later.
 IndexMap LegalizeIndexMapDType(const IndexMap& index_map, const Array<PrimExpr>& args) {
   const auto& initial_indices_orig = index_map->initial_indices;
-  ICHECK(args.size() == initial_indices_orig.size());
+  ICHECK(args.size() == initial_indices_orig.size()) << "The arg size is " << args.size()
+                                                     << ", but the index map is "
+                                                     << index_map->initial_indices.size();
 
   Array<Var> initial_indices;
   Map<Var, PrimExpr> var_map;
