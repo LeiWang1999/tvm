@@ -134,33 +134,93 @@ TVM_REGISTER_GLOBAL("tvm.contrib.rocblas.batch_matmul")
       DLTensor* C = args[2];
       bool transa = args[3];
       bool transb = args[4];
-      // call gemm for simple compact code.
+
+      // Check dimensions
       ICHECK_EQ(A->ndim, 3);
       ICHECK_EQ(B->ndim, 3);
       ICHECK_EQ(C->ndim, 3);
-      ICHECK(TypeMatch(A->dtype, kDLFloat, 32));
-      ICHECK(TypeMatch(B->dtype, kDLFloat, 32));
-      ICHECK(TypeMatch(C->dtype, kDLFloat, 32));
 
-      float alpha = 1.0;
-      float beta = 0.0;
-      float* A_ptr = reinterpret_cast<float*>(static_cast<char*>(A->data) + A->byte_offset);
-      float* B_ptr = reinterpret_cast<float*>(static_cast<char*>(B->data) + B->byte_offset);
-      float* C_ptr = reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset);
+      // Determine data types
+      bool is_a_float32 = TypeMatch(A->dtype, kDLFloat, 32);
+      bool is_c_float32 = TypeMatch(C->dtype, kDLFloat, 32);
 
-      rocblas_operation roc_trans_A = transa ? rocblas_operation_transpose : rocblas_operation_none;
-      rocblas_operation roc_trans_B = transb ? rocblas_operation_transpose : rocblas_operation_none;
-      size_t batch_size = C->shape[0];
-      size_t N = transb ? B->shape[1] : B->shape[2];
-      size_t M = transa ? A->shape[2] : A->shape[1];
-      size_t K = transb ? B->shape[2] : B->shape[1];
-      size_t lda = transa ? M : K;
-      size_t ldb = transb ? K : N;
-      size_t ldc = N;
+      if (is_a_float32) {
+        // Handle float32 case
+        ICHECK(TypeMatch(B->dtype, kDLFloat, 32));
+        ICHECK(TypeMatch(C->dtype, kDLFloat, 32));
 
-      CHECK_ROCBLAS_ERROR(rocblas_sgemm_strided_batched(
-          RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A, N, M, K, &alpha, B_ptr, ldb,
-          K * N, A_ptr, lda, M * K, &beta, C_ptr, ldc, M * N, batch_size));
+        float alpha = 1.0f;
+        float beta = 0.0f;
+        float* A_ptr = reinterpret_cast<float*>(static_cast<char*>(A->data) + A->byte_offset);
+        float* B_ptr = reinterpret_cast<float*>(static_cast<char*>(B->data) + B->byte_offset);
+        float* C_ptr = reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset);
+
+        rocblas_operation roc_trans_A =
+            transa ? rocblas_operation_transpose : rocblas_operation_none;
+        rocblas_operation roc_trans_B =
+            transb ? rocblas_operation_transpose : rocblas_operation_none;
+
+        size_t batch_size = C->shape[0];
+        size_t N = transb ? B->shape[1] : B->shape[2];
+        size_t M = transa ? A->shape[2] : A->shape[1];
+        size_t K = transb ? B->shape[2] : B->shape[1];
+        size_t lda = transa ? M : K;
+        size_t ldb = transb ? K : N;
+        size_t ldc = N;
+
+        rocblas_stride strideA = M * K;
+        rocblas_stride strideB = K * N;
+        rocblas_stride strideC = M * N;
+
+        CHECK_ROCBLAS_ERROR(rocblas_sgemm_strided_batched(
+            RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A, N, M, K, &alpha, B_ptr, ldb,
+            strideB, A_ptr, lda, strideA, &beta, C_ptr, ldc, strideC, batch_size));
+
+      } else {
+        // Handle float16 case
+        ICHECK(TypeMatch(A->dtype, kDLFloat, 16));
+        ICHECK(TypeMatch(B->dtype, kDLFloat, 16));
+
+        auto algo = rocblas_gemm_algo_standard;
+        auto aType = rocblas_datatype_f16_r;
+        auto bType = rocblas_datatype_f16_r;
+        auto cType = is_c_float32 ? rocblas_datatype_f32_r : rocblas_datatype_f16_r;
+        auto computeType = rocblas_datatype_f32_r;
+
+        float alpha = 1.0f;
+        float beta = 0.0f;
+        half* A_ptr = reinterpret_cast<half*>(static_cast<char*>(A->data) + A->byte_offset);
+        half* B_ptr = reinterpret_cast<half*>(static_cast<char*>(B->data) + B->byte_offset);
+        void* C_ptr;
+        if (is_c_float32) {
+          C_ptr = reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset);
+        } else {
+          C_ptr = reinterpret_cast<half*>(static_cast<char*>(C->data) + C->byte_offset);
+        }
+
+        rocblas_operation roc_trans_A =
+            transa ? rocblas_operation_transpose : rocblas_operation_none;
+        rocblas_operation roc_trans_B =
+            transb ? rocblas_operation_transpose : rocblas_operation_none;
+
+        size_t batch_size = C->shape[0];
+        size_t N = transb ? B->shape[1] : B->shape[2];
+        size_t M = transa ? A->shape[2] : A->shape[1];
+        size_t K = transb ? B->shape[2] : B->shape[1];
+        size_t lda = transa ? M : K;
+        size_t ldb = transb ? K : N;
+        size_t ldc = N;
+
+        rocblas_stride strideA = M * K;
+        rocblas_stride strideB = K * N;
+        rocblas_stride strideC = M * N;
+
+        CHECK_ROCBLAS_ERROR(rocblas_gemm_strided_batched_ex(
+            RocBlasThreadStore::Get()->handle, roc_trans_B, roc_trans_A, N, M, K, &alpha,
+            B_ptr, bType, ldb, strideB, A_ptr, aType, lda, strideA, &beta,
+            C_ptr, cType, ldc, strideC, C_ptr, cType, ldc, strideC, batch_size,
+            computeType, algo, 0, 0));
+      }
     });
 }  // namespace contrib
 }  // namespace tvm
