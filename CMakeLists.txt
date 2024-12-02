@@ -475,6 +475,9 @@ endif(USE_KALLOC_ALIGNMENT)
 # need to be re-compiled every time. Using ccache 4.0+ can resolve this issue.
 include(cmake/utils/CCache.cmake)
 
+if(USE_ROCM)
+set(CMAKE_CXX_FLAGS "-D__HIP_PLATFORM_AMD__ ${CMAKE_CXX_FLAGS}")
+endif()
 # Module rules
 include(cmake/modules/VTA.cmake)
 include(cmake/modules/StandaloneCrt.cmake)

@@ -92,8 +92,6 @@ std::string CodeGenHIP::Finish() {
 #define half _Float16
 #define __float2half_rn(x) half(x)
 
-#include <hip/hcc_detail/hip_fp16_math_fwd.h>
-
 #define hpow __ocml_pown_f16
 #define hsqrt __ocml_sqrt_f16
 

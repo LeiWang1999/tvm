@@ -1666,10 +1666,10 @@ class Pad(OnnxOpConverter):
     @classmethod
     def _impl_v11(cls, inputs, attr, params):
         pads = inputs[1]
-        if len(inputs) == 3:
-            value = fold_constant(_op.take(inputs[2], _op.const(0)))
-        else:
-            value = 0.0
+        # if len(inputs) == 3:
+        #     value = fold_constant(_op.take(inputs[2], _op.const(0)))
+        # else:
+        value = 0.0
 
         pad_width_expr = fold_constant(_op.transpose(_op.reshape(pads, (2, -1))))
         pad_mode = attr.get("mode", b"constant").decode("utf-8")
