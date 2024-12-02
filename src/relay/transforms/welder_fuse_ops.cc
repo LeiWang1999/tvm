@@ -175,7 +175,7 @@ struct TaggedNodeGraph {
         fusible &= !(top_node->kind_ == kOutEWiseFusable && tnode->kind_ > kBroadcast);
         fusible &= (!tnode->reverse_inlined_);
       }
-      if (tnode->op_type_ == "transpose" || top_node->op_type_ == "transpose") fusible = false;
+      // if (tnode->op_type_ == "transpose" || top_node->op_type_ == "transpose") fusible = false;
       
       // add to group
       if (fusible) {
